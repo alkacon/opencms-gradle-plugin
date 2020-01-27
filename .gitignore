@@ -1,0 +1,8 @@
+/.gradle/
+/bin/
+/test-bin
+/.project
+/.settings/
+**/.gradle
+Thumbs.db
+/build/

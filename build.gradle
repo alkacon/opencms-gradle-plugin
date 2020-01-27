@@ -1,0 +1,17 @@
+plugins {
+    id 'groovy'
+    id 'maven'
+}
+
+dependencies {
+    implementation gradleApi()
+    implementation localGroovy()
+}
+
+repositories {
+    mavenCentral()
+}
+
+group = 'org.opencms'
+version = '1.0-SNAPSHOT'
+buildDir = '../../OpenCmsGradle'
