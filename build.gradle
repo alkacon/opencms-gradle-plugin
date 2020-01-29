@@ -27,7 +27,7 @@ artifacts {
     archives jar
     archives javadocJar
     archives sourcesJar
-    
+
 }
 
 signing {
@@ -65,6 +65,13 @@ if (project.hasProperty('publish_repository')){
                         }
                     }
                     url 'http://www.opencms.org'
+                    name 'OpenCms Modules Gradle Plugin'
+                    description 'This Gradle plugin can be used to build modules for OpenCms.'
+                    scm {
+                        url 'scm:git@github.com:alkacon/opencms-gradle-plugin.git'
+                        connection 'scm:git@github.com:alkacon/opencms-gradle-plugin.git'
+                        developerConnection 'scm:git@github.com:alkacon/opencms-gradle-plugin.git'
+                    }
                 }
             }
         }
