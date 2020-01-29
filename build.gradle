@@ -1,6 +1,7 @@
 plugins {
     id 'groovy'
     id 'maven'
+    id 'signing'
 }
 
 dependencies {
@@ -12,6 +13,61 @@ repositories {
     mavenCentral()
 }
 
-group = 'org.opencms'
-version = '1.0-SNAPSHOT'
-buildDir = '../../OpenCmsGradle'
+task javadocJar(type: Jar, dependsOn: groovydoc) {
+    classifier = 'javadoc'
+    from "${buildDir}/docs/groovydoc"
+}
+
+task sourcesJar(type: Jar) {
+    from sourceSets.main.groovy.srcDirs
+    classifier = 'sources'
+}
+
+artifacts {
+    archives jar
+    archives javadocJar
+    archives sourcesJar
+    
+}
+
+signing {
+    required {gradle.taskGraph.hasTask("uploadArchives") }
+    sign configurations.archives
+}
+
+
+
+if (project.hasProperty('publish_repository')){
+    uploadArchives {
+        it.dependsOn(signArchives)
+        repositories {
+            mavenDeployer {
+                beforeDeployment { MavenDeployment deployment -> signing.signPom(deployment) }
+                repository(url: publish_repository) {
+                    authentication(userName: publish_user, password: publish_password)
+                }
+                pom.project {
+                    licenses {
+                        license {
+                            name 'GNU Lesser General Public License'
+                            url 'http://www.gnu.org/licenses/lgpl.html'
+                            distribution 'repo'
+                        }
+                    }
+                    organization {
+                        name 'Alkacon Software'
+                        url 'http://www.alkacon.com'
+                    }
+                    developers {
+                        developer {
+                            name 'Alkacon Software'
+                            url 'http://www.alkacon.com'
+                        }
+                    }
+                    url 'http://www.opencms.org'
+                }
+            }
+        }
+    }
+}
+
