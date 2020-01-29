@@ -15,12 +15,36 @@ import org.gradle.api.tasks.javadoc.Javadoc
 import org.gradle.api.tasks.testing.Test
 import org.gradle.api.tasks.wrapper.Wrapper
 
-class OpenCmsGradlePlugin implements Plugin<Project> {
+/**
+ * This Gradle plugin should be used to build modules for OpenCms.<p>
+ *
+ * It assumes each module is placed in a folder named as the module within the project folder.<p>
+ * This module folder should contain a 'resources' folder containing all module VFS resource
+ * including the module manifest.xml file.<p>
+ * Optionally the module folder may contain a 'src' folder containing the java source file
+ * required by the module.<p>
+ * Optionally it may contain a 'static' folder containing static resources that will be placed
+ * into the module JAR file and will be accessible through static resource URLs within OpenCms.<p>
+ *
+ * All module names of the project must be listed in the build property 'modules_list' as comma
+ * separated values.<p>
+ * Also the artifact name needs be provided with the build property 'project_name' as well as the
+ * project nice name with 'project_nice_name' and the build version with 'build_version'.<p>
+ *
+ * Use the task 'bindist' to build all project modules and 'install' to make project artifacts
+ * available within your local maven cache.<p>
+ **/
+class OpenCmsModulesPlugin implements Plugin<Project> {
 
     private static final String GRADLE_VERSION='6.1'
 
     private static final String HORIZONTAL_LINE='==============================================================================='
 
+    /**
+     * Called when applying to the build project.<p>
+     *
+     * @param project the project that is being build
+     **/
     void apply(Project project) {
 
         if (project.hasProperty('build_directory')) {
