@@ -13,6 +13,9 @@ repositories {
     mavenCentral()
 }
 
+sourceCompatibility='1.8'
+targetCompatibility='1.8'
+
 task javadocJar(type: Jar, dependsOn: groovydoc) {
     classifier = 'javadoc'
     from "${buildDir}/docs/groovydoc"
@@ -21,6 +24,10 @@ task javadocJar(type: Jar, dependsOn: groovydoc) {
 task sourcesJar(type: Jar) {
     from sourceSets.main.groovy.srcDirs
     classifier = 'sources'
+}
+
+task setGradleVersion(type: Wrapper) {
+    gradleVersion = '6.1'
 }
 
 artifacts {
