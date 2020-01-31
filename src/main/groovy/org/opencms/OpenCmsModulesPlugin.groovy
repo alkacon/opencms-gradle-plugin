@@ -299,7 +299,7 @@ class OpenCmsModulesPlugin implements Plugin<Project> {
                         }
                     })
                     project.sourceSets[gwtSourceSetName].compileClasspath=project.configurations.compile
-                    project.task([dependsOn: project.task["${gwtSourceSetName}Classes"], type: JavaExec], "gwt_$moduleName") {
+                    project.task([dependsOn: project.tasks["${gwtSourceSetName}Classes"], type: JavaExec], "gwt_$moduleName") {
                         ext.buildDir =  project.buildDir.toString()  +"/gwt/$moduleName"
                         ext.extraDir =  project.buildDir.toString() + "/extra/$moduleName"
                         ext.moduleName = moduleName
@@ -317,7 +317,7 @@ class OpenCmsModulesPlugin implements Plugin<Project> {
                             // to clean the output directory, delete it first
                             def dir = project.file(buildDir)
                             if (dir.exists()){
-                                delete(dir)
+                                project.delete(dir)
                             }
                             dir.mkdirs()
                         }
@@ -351,7 +351,7 @@ class OpenCmsModulesPlugin implements Plugin<Project> {
                             "-${project.gwtMode}"
                         ]
 
-                        maxHeapSize = max_heap_size
+                        maxHeapSize = project.max_heap_size
                     }
 
                     project.tasks["jar_$moduleName"].dependsOn project.tasks["gwt_$moduleName"]
