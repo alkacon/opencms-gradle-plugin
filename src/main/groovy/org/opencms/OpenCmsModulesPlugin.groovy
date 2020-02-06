@@ -6,6 +6,7 @@ import org.apache.tools.ant.filters.ReplaceTokens
 import org.gradle.api.JavaVersion
 import org.gradle.api.Plugin
 import org.gradle.api.Project
+import org.gradle.api.UnknownDomainObjectException
 import org.gradle.api.tasks.Copy
 import org.gradle.api.tasks.JavaExec
 import org.gradle.api.tasks.bundling.Jar
@@ -37,41 +38,60 @@ import org.gradle.api.tasks.wrapper.Wrapper
 class OpenCmsModulesPlugin implements Plugin<Project> {
 
     private static final String GRADLE_VERSION='6.1'
+    private static final String DEFAULT_JAVA_COMPATIBILITY='1.8'
+    private static final String PROJECT_EXTENSION = "ocDependencies"
 
     private static final String HORIZONTAL_LINE='==============================================================================='
 
     /**
-     * Called when applying to the build project.<p>
+     * Called when applying to the build p.<p>
      *
      * @param project the project that is being build
      **/
-    void apply(Project project) {
+    void apply(Project p) {
 
-        if (project.hasProperty('build_directory')) {
-            project.buildDir = project.build_directory
+        def ocDependencies = null;
+        try {
+            ocDependencies = p.getExtensions().getByName('ocDependencies');
+        } catch (UnknownDomainObjectException ex) {
+            // this is ok.
         }
 
-        if (project.hasProperty('java_target_version')) {
-            project.sourceCompatibility = project.java_target_version
-            project.targetCompatibility = project.java_target_version
+        if (p.hasProperty('build_directory')) {
+            p.buildDir = p.build_directory
         }
 
-        project.ext.gwtStyle='obfuscated'
-        if (project.hasProperty('gwt_style')) {
-            project.gwtStyle=project.gwt_style
+        if (p.hasProperty('java_target_version')) {
+            p.targetCompatibility = p.java_target_version
+        } else {
+            println "Using plugins default Java target compatibility (${DEFAULT_JAVA_COMPATIBILITY}). To overwrite use property 'java_target_version'."
+            p.targetCompatibility = DEFAULT_JAVA_COMPATIBILITY
+        }
+        if (p.hasProperty('java_source_version')) {
+            p.sourceCompatibility = p.java_source_version
+        } else {
+            println "Java source compatibility not explicitly specified. Using target compatiblity (${p.targetCompatibility}). To overwrite use property 'java_source_version'."
+            p.sourceCompatibility = p.targetCompatibility
         }
 
-        project.ext.gwtMode='strict'
-        if (project.hasProperty('gwt_mode')) {
-            project.gwtMode=project.gwt_mode
+        p.ext.gwtStyle='obfuscated'
+        if (p.hasProperty('gwt_style')) {
+            p.gwtStyle=p.gwt_style
+        }
+
+        p.ext.gwtMode='strict'
+        if (p.hasProperty('gwt_mode')) {
+            p.gwtMode=p.gwt_mode
         }
 
 
-        project.repositories {
+        p.repositories {
             mavenLocal()
-            if (project.hasProperty('additional_repositories')){
-                project.additional_repositories.split(';').each{ repo ->
-                    maven { url repo }
+            if (p.hasProperty('additional_repositories')){
+                p.additional_repositories.split(';').each{ repo ->
+                    maven {
+                        url repo
+                    }
                 }
             }
             jcenter()
@@ -86,7 +106,7 @@ class OpenCmsModulesPlugin implements Plugin<Project> {
             }
         }
 
-        project.configurations {
+        p.configurations {
             moduleDeps {
                 description = 'additional dependencies required by modules, need to be added into the webapp lib folder'
             }
@@ -99,19 +119,88 @@ class OpenCmsModulesPlugin implements Plugin<Project> {
                 extendsFrom compile
             }
         }
+        if (null != ocDependencies) {
+            println "You are using default OpenCms dependencies with the following configuration:"
+            println ""
+            ocDependencies.printState()
+            if (ocDependencies.addDefaultOpenCmsDependencies) {
+                println "Adding default opencms compile dependencies:"
+                println " - compile group: 'org.opencms', name: 'opencms-core', version: ${p.opencms_version}"
+                println " - moduleDeps p.fileTree(dir: '.').matching {"
+                println "     include '**/lib/*.jar'"
+                println "   }"
+                p.dependencies {
+                    compile group: 'org.opencms', name: 'opencms-core', version: p.opencms_version
+                    moduleDeps p.fileTree(dir: '.').matching {
+                        include '**/lib/*.jar'
+                    }
+                }
+            }
+            if (ocDependencies.addDefaultOpenCmsTestDependencies) {
+                println "Adding default opencms testCompile dependencies:"
+                println " - compile group: 'org.opencms', name: 'opencms-setup', version: ${p.opencms_version}"
+                println " - compile group: 'org.opencms', name: 'opencms-modules', version: ${p.opencms_version}"
+                println " - compile group: 'org.opencms', name: 'opencms-test', version: ${p.opencms_version}"
+                p.dependencies {
+                    compile group: 'org.opencms', name: 'opencms-setup', version: p.opencms_version
+                    compile group: 'org.opencms', name: 'opencms-modules', version: p.opencms_version
+                    compile group: 'org.opencms', name: 'opencms-test', version: p.opencms_version
+                }
+            }
+            def jUnitDep = ocDependencies.addJUnitTestDependencyVersion;
+            if (null != jUnitDep && !jUnitDep.isEmpty()) {
+                println "Adding junit version ${jUnitDep} as testCompile dependency:"
+                println " - testCompile group: 'junit', name: 'junit', version: ${jUnitDep}"
 
-        project.apply([from: 'dependencies.gradle'])
+                p.dependencies {
+                    testCompile group: 'junit', name: 'junit', version: jUnitDep
+                }
+            }
+            def hSqlDbDep = ocDependencies.addHSqlDbDependencyVersion;
+            if (null != hSqlDbDep && !hSqlDbDep.isEmpty()) {
+                println "Adding hsqldb version ${hSqlDbDep} as testCompile dependency."
+                println " - testCompile group: 'junit', name: 'junit', version: ${hSqlDbDep}"
+                p.dependencies {
+                    testCompile group: 'org.hsqldb', name: 'hsqldb', version: hSqlDbDep
+                }
+            }
+        }
 
-        project.sourceSets {
+        if (p.file("dependencies.gradle").exists()) {
+            println "Adding custom dependencies from 'dependencies.gradle'"
+            p.apply([from: 'dependencies.gradle'])
+        } else {
+            println "No custom dependencies loaded. Add file 'dependencies.gradle' with to dependencies to add some."
+        }
+
+        if (p.ext.has('coreproject')) {
+            def coreproject = p.ext.coreproject
+            println "The Modules are compiled with the core directly."
+            println "Replacing dependencies to the following core artifacts with the core project \"${coreproject}\":"
+            println " - org.opencms:opencms-core"
+            println " - org.opencms:opencms-modules"
+            println " - org.opencms:opencms-test"
+            println " - org.opencms:opencms-setup"
+            p.configurations.all {
+                resolutionStrategy.dependencySubstitution {
+                    substitute module("org.opencms:opencms-core") with project(coreproject)
+                    substitute module("org.opencms:opencms-modules") with project(coreproject)
+                    substitute module("org.opencms:opencms-test") with project(coreproject)
+                    substitute module("org.opencms:opencms-setup") with project(coreproject)
+                }
+            }
+        }
+
+        p.sourceSets {
             test {
                 java {
                     srcDir "test/src"
                 }
-                compileClasspath=project.configurations.testCompile
+                compileClasspath=p.configurations.testCompile
             }
         }
 
-        project.task('opencmsPluginDescription'){
+        p.task('opencmsPluginDescription'){
             doFirst{
                 println HORIZONTAL_LINE
                 println 'OpenCms modules plugin description'
@@ -135,46 +224,46 @@ class OpenCmsModulesPlugin implements Plugin<Project> {
         }
 
         try {
-            project.ext.modulesDistsDir = project.file("${project.buildDir}/modulesZip")
-            project.ext.moduleLibs=''
-            project.ext.dependencyLibs=''
-            project.ext.modulesAll=''
+            p.ext.modulesDistsDir = p.file("${p.buildDir}/modulesZip")
+            p.ext.moduleLibs=''
+            p.ext.dependencyLibs=''
+            p.ext.modulesAll=''
 
-            if (!project.hasProperty('max_heap_size')){
-                project.ext.max_heap_size='1024m'
+            if (!p.hasProperty('max_heap_size')){
+                p.ext.max_heap_size='1024m'
             }
 
-            project.ext.allModuleNames = project.modules_list.split(',')
-            project.ext.modulesDistsDir = project.file("${project.buildDir}/modulesZip")
+            p.ext.allModuleNames = p.modules_list.split(',')
+            p.ext.modulesDistsDir = p.file("${p.buildDir}/modulesZip")
 
             // iterate all configured modules
-            project.allModuleNames.each{ moduleName ->
-                project.sourceSets.create(moduleName,{
+            p.allModuleNames.each{ moduleName ->
+                p.sourceSets.create(moduleName,{
                     java {
                         srcDir "${moduleName}/src"
                         exclude '**/test/**'
                     }
                     resources.srcDir "${moduleName}/src"
                 });
-                project.sourceSets[moduleName].compileClasspath=project.configurations.compile
-                def moduleFolder = project.file("${moduleName}")
-                def srcModule = project.file("${moduleFolder}/src")
-                def srcGwtDir = project.file("${moduleFolder}/src-gwt")
-                def staticFolder=project.file("${moduleFolder}/static")
+                p.sourceSets[moduleName].compileClasspath=p.configurations.compile
+                def moduleFolder = p.file("${moduleName}")
+                def srcModule = p.file("${moduleFolder}/src")
+                def srcGwtDir = p.file("${moduleFolder}/src-gwt")
+                def staticFolder=p.file("${moduleFolder}/static")
                 def requiresJar = srcModule.exists() || srcGwtDir.exists() || staticFolder.exists()
-                def manifestFile = project.file("${moduleFolder}/resources/manifest.xml")
+                def manifestFile = p.file("${moduleFolder}/resources/manifest.xml")
                 def gwtModule = null
                 def gwtSourceSetName = null
-                def propertyFile = project.file("${moduleFolder}/module.properties")
+                def propertyFile = p.file("${moduleFolder}/module.properties")
                 def gwtRename = null
                 if (propertyFile.exists()){
-                    project.logger.lifecycle("checking properties for module $moduleName")
+                    p.logger.lifecycle("checking properties for module $moduleName")
                     Properties moduleProperties= new Properties()
                     moduleProperties.load(new FileInputStream(propertyFile))
                     if (moduleProperties['module.gwt']!=null){
                         gwtModule = moduleProperties['module.gwt']
                         gwtSourceSetName = moduleName.replace(".", "_")+'_gwt'
-                        project.logger.lifecycle("found GWT module $gwtModule")
+                        p.logger.lifecycle("found GWT module $gwtModule")
                         def moduleXml = (new XmlParser()).parse(srcGwtDir.toString()+"/" +gwtModule.replaceAll('\\.','/')+'.gwt.xml')
                         gwtRename = moduleXml['@rename-to']
                         if (gwtRename==null){
@@ -182,15 +271,15 @@ class OpenCmsModulesPlugin implements Plugin<Project> {
                         }
                     }
                 }
-                def testDir = project.file("${moduleFolder}/test")
+                def testDir = p.file("${moduleFolder}/test")
                 def requiresTest = testDir.exists()
                 if (requiresTest){
-                    project.sourceSets.test.compileClasspath += project.files(project.sourceSets[moduleName].java.outputDir) { builtBy project.sourceSets[moduleName].compileJavaTaskName }
-                    project.sourceSets.test.runtimeClasspath += project.files(project.sourceSets[moduleName].java.outputDir) { builtBy project.sourceSets[moduleName].compileJavaTaskName }
-                    project.sourceSets.test.java.srcDir "${moduleName}/test"
+                    p.sourceSets.test.compileClasspath += p.files(p.sourceSets[moduleName].java.outputDir) { builtBy p.sourceSets[moduleName].compileJavaTaskName }
+                    p.sourceSets.test.runtimeClasspath += p.files(p.sourceSets[moduleName].java.outputDir) { builtBy p.sourceSets[moduleName].compileJavaTaskName }
+                    p.sourceSets.test.java.srcDir "${moduleName}/test"
                 }
                 def moduleDependencies=[]
-                def moduleVersion = project.version
+                def moduleVersion = p.version
                 if (manifestFile.exists()){
                     def parsedManifest= (new XmlParser()).parse("${moduleFolder}/resources/manifest.xml")
                     parsedManifest.module[0].dependencies[0].dependency.each{ dep ->
@@ -199,17 +288,17 @@ class OpenCmsModulesPlugin implements Plugin<Project> {
                     moduleVersion = parsedManifest.module[0].version[0].text()
                 }
                 if (requiresJar.toBoolean()) {
-                    project.task([type: Jar],"jar_$moduleName") {
+                    p.task([type: Jar],"jar_$moduleName") {
                         ext.moduleName = moduleName
                         ext.moduleVersion= moduleVersion
                         manifest {
-                            attributes 'Implementation-Title': project.project_nice_name, 'Implementation-Version': moduleVersion
+                            attributes 'Implementation-Title': p.project_nice_name, 'Implementation-Version': moduleVersion
                         }
-                        from project.sourceSets[moduleName].output
+                        from p.sourceSets[moduleName].output
                         from ("$moduleFolder") { include "META-INF/**" }
                         from ("$staticFolder") { into "OPENCMS" }
                         if (gwtModule != null){
-                            from( "${project.buildDir}/gwt/${moduleName}") {
+                            from( "${p.buildDir}/gwt/${moduleName}") {
                                 exclude '**/WEB-INF/**'
                                 into "OPENCMS/gwt"
                             }
@@ -226,26 +315,26 @@ class OpenCmsModulesPlugin implements Plugin<Project> {
                     }
                 }
                 if (requiresTest.toBoolean()) {
-                    project.task([type: Test, dependsOn: project.sourceSets.test.compileJavaTaskName], "test_$moduleName") {
+                    p.task([type: Test, dependsOn: p.sourceSets.test.compileJavaTaskName], "test_$moduleName") {
                         useJUnit()
-                        classpath += project.sourceSets.test.compileClasspath
-                        classpath += project.files(project.sourceSets.test.java.outputDir)
+                        classpath += p.sourceSets.test.compileClasspath
+                        classpath += p.files(p.sourceSets.test.java.outputDir)
                         include "**/Test*"
                         // important: exclude all anonymous classes
                         exclude '**/*$*.class'
                         scanForTestClasses false
-                        testClassesDirs = project.files(project.sourceSets.test.java.outputDir)
+                        testClassesDirs = p.files(p.sourceSets.test.java.outputDir)
                         systemProperties['db.product'] = "hsqldb"
-                        systemProperties['test.data.path'] = "${project.projectDir}/test/data"
-                        systemProperties['test.webapp.path'] = "${project.projectDir}/test/webapp"
-                        systemProperties['test.build.folder'] =project.sourceSets.test.output.resourcesDir
-                        maxHeapSize = project.max_heap_size
+                        systemProperties['test.data.path'] = "${p.projectDir}/test/data"
+                        systemProperties['test.webapp.path'] = "${p.projectDir}/test/webapp"
+                        systemProperties['test.build.folder'] =p.sourceSets.test.output.resourcesDir
+                        maxHeapSize = p.max_heap_size
                         jvmArgs '-XX:MaxPermSize=256m'
                         testLogging.showStandardStreams = true
                         ignoreFailures true
                     }
                 }
-                project.task([type: Zip], "dist_$moduleName"){
+                p.task([type: Zip], "dist_$moduleName"){
                     ext.moduleName = moduleName
                     ext.moduleFolder = moduleFolder
                     ext.dependencies = moduleDependencies
@@ -253,14 +342,14 @@ class OpenCmsModulesPlugin implements Plugin<Project> {
                     ext.gwtRenameTo = gwtRename
                     ext.requiresJar = requiresJar
                     ext.requiresTest = requiresTest
-                    if (project.hasProperty('noVersion')) {
+                    if (p.hasProperty('noVersion')) {
                         version
-                        project.modulesAll +="${moduleName}.zip,"
+                        p.modulesAll +="${moduleName}.zip,"
                     } else {
                         version moduleVersion
-                        project.modulesAll +="${moduleName}-${moduleVersion}.zip,"
+                        p.modulesAll +="${moduleName}-${moduleVersion}.zip,"
                     }
-                    destinationDir project.modulesDistsDir
+                    destinationDir p.modulesDistsDir
                     baseName moduleName
                     doFirst {
                         println HORIZONTAL_LINE
@@ -275,20 +364,20 @@ class OpenCmsModulesPlugin implements Plugin<Project> {
                     // the following allows to rename the .categories to _categories for instances still using the legacy folder name
                     from("${moduleFolder}/resources"){
                         include 'manifest.xml'
-                        if (project.hasProperty('replaceCategoryFolder')){
+                        if (p.hasProperty('replaceCategoryFolder')){
                             filter { line -> line.replaceAll('/.categories', '/_categories') }
                         }
                     }
                 }
                 if (requiresJar.toBoolean()) {
-                    project.tasks["dist_$moduleName"].dependsOn("jar_$moduleName")
-                    project.moduleLibs+="${moduleName}.jar,"
+                    p.tasks["dist_$moduleName"].dependsOn("jar_$moduleName")
+                    p.moduleLibs+="${moduleName}.jar,"
                 }
 
                 if (gwtModule != null){
-                    project.logger.lifecycle("creating sourceset for $gwtModule")
+                    p.logger.lifecycle("creating sourceset for $gwtModule")
 
-                    project.sourceSets.create(gwtSourceSetName,{
+                    p.sourceSets.create(gwtSourceSetName,{
                         java {
                             srcDirs srcGwtDir
                             srcDir srcModule
@@ -298,13 +387,13 @@ class OpenCmsModulesPlugin implements Plugin<Project> {
                             srcDirs srcGwtDir
                         }
                     })
-                    project.sourceSets[gwtSourceSetName].compileClasspath=project.configurations.compile
-                    project.task([dependsOn: project.tasks["${gwtSourceSetName}Classes"], type: JavaExec], "gwt_$moduleName") {
-                        ext.buildDir =  project.buildDir.toString()  +"/gwt/$moduleName"
-                        ext.extraDir =  project.buildDir.toString() + "/extra/$moduleName"
+                    p.sourceSets[gwtSourceSetName].compileClasspath=p.configurations.compile
+                    p.task([dependsOn: p.tasks["${gwtSourceSetName}Classes"], type: JavaExec], "gwt_$moduleName") {
+                        ext.buildDir =  p.buildDir.toString()  +"/gwt/$moduleName"
+                        ext.extraDir =  p.buildDir.toString() + "/extra/$moduleName"
                         ext.moduleName = moduleName
-                        inputs.files project.sourceSets[gwtSourceSetName].java.srcDirs
-                        inputs.dir project.sourceSets[gwtSourceSetName].output.resourcesDir
+                        inputs.files p.sourceSets[gwtSourceSetName].java.srcDirs
+                        inputs.dir p.sourceSets[gwtSourceSetName].output.resourcesDir
                         outputs.dir buildDir
 
                         // Workaround for incremental build (GRADLE-1483)
@@ -315,9 +404,9 @@ class OpenCmsModulesPlugin implements Plugin<Project> {
                             println "Building GWT resources for $gwtModule"
                             println HORIZONTAL_LINE
                             // to clean the output directory, delete it first
-                            def dir = project.file(buildDir)
+                            def dir = p.file(buildDir)
                             if (dir.exists()){
-                                project.delete(dir)
+                                p.delete(dir)
                             }
                             dir.mkdirs()
                         }
@@ -326,11 +415,11 @@ class OpenCmsModulesPlugin implements Plugin<Project> {
 
                         classpath {
                             [
-                                project.sourceSets[moduleName].java.srcDirs,
-                                project.sourceSets[moduleName].compileClasspath,
-                                project.sourceSets[gwtSourceSetName].java.srcDirs,
-                                project.sourceSets[gwtSourceSetName].output.resourcesDir,
-                                project.sourceSets[gwtSourceSetName].java.outputDir
+                                p.sourceSets[moduleName].java.srcDirs,
+                                p.sourceSets[moduleName].compileClasspath,
+                                p.sourceSets[gwtSourceSetName].java.srcDirs,
+                                p.sourceSets[gwtSourceSetName].output.resourcesDir,
+                                p.sourceSets[gwtSourceSetName].java.outputDir
                             ]
                         }
 
@@ -345,118 +434,118 @@ class OpenCmsModulesPlugin implements Plugin<Project> {
                             '-localWorkers',
                             '2',
                             '-style',
-                            project.gwtStyle,
+                            p.gwtStyle,
                             '-extra',
                             extraDir,
-                            "-${project.gwtMode}"
+                            "-${p.gwtMode}"
                         ]
 
-                        maxHeapSize = project.max_heap_size
+                        maxHeapSize = p.max_heap_size
                     }
 
-                    project.tasks["jar_$moduleName"].dependsOn project.tasks["gwt_$moduleName"]
+                    p.tasks["jar_$moduleName"].dependsOn p.tasks["gwt_$moduleName"]
                 }
             }
 
-            project.task([type: Copy], 'copyDeps'){
-                from project.configurations.moduleDeps
-                into "${project.buildDir}/deps"
+            p.task([type: Copy], 'copyDeps'){
+                from p.configurations.moduleDeps
+                into "${p.buildDir}/deps"
             }
 
-            project.task([type: Copy], 'copyProjectProps'){
-                project.configurations.moduleDeps.each {d ->
-                    project.dependencyLibs="${project.dependencyLibs}${d.name},"
+            p.task([type: Copy], 'copyProjectProps'){
+                p.configurations.moduleDeps.each {d ->
+                    p.dependencyLibs="${p.dependencyLibs}${d.name},"
                 }
-                from(project.projectDir) {
-                    include 'project.properties'
+                from(p.projectDir) {
+                    include 'p.properties'
                     filter(ReplaceTokens, tokens: [
-                        MODULES_ALL: ''+project.modulesAll,
-                        MODULE_LIBS: ''+project.moduleLibs,
-                        DEPENDENCY_LIBS: ''+project.dependencyLibs
+                        MODULES_ALL: ''+p.modulesAll,
+                        MODULE_LIBS: ''+p.moduleLibs,
+                        DEPENDENCY_LIBS: ''+p.dependencyLibs
                     ])
 
                 }
-                into project.modulesDistsDir
+                into p.modulesDistsDir
             }
 
-            project.task([dependsOn: [
-                    project.copyDeps,
-                    project.copyProjectProps
+            p.task([dependsOn: [
+                    p.copyDeps,
+                    p.copyProjectProps
                 ]], 'bindist') {
                 doFirst{
                     println 'Done'
                 }
             }
 
-            project.task([type: Jar], 'projectAllJar'){
-                project.allModuleNames.each{ moduleName ->
-                    from project.sourceSets[moduleName].output
+            p.task([type: Jar], 'projectAllJar'){
+                p.allModuleNames.each{ moduleName ->
+                    from p.sourceSets[moduleName].output
                 }
-                baseName "${project.project_name}"
+                baseName "${p.project_name}"
                 exclude '**/.gitignore'
                 exclude '**/test/**'
                 doFirst {
                     println HORIZONTAL_LINE
-                    println "Building JAR for ${project.project_nice_name} ALL"
+                    println "Building JAR for ${p.project_nice_name} ALL"
                     println HORIZONTAL_LINE
                 }
             }
 
-            project.task([type: Javadoc], 'projectAllJavadoc'){
-                project.allModuleNames.each{ moduleName ->
-                    source += project.sourceSets[moduleName].allJava
-                    classpath += project.sourceSets[moduleName].compileClasspath
+            p.task([type: Javadoc], 'projectAllJavadoc'){
+                p.allModuleNames.each{ moduleName ->
+                    source += p.sourceSets[moduleName].allJava
+                    classpath += p.sourceSets[moduleName].compileClasspath
                 }
-                destinationDir = project.file("${project.buildDir}/docs/projectAllJavadoc")
+                destinationDir = p.file("${p.buildDir}/docs/projectAllJavadoc")
                 options.addStringOption("sourcepath", "")
             }
 
-            project.task([dependsOn: project.projectAllJavadoc, type: Jar], 'projectAllJavadocJar') {
+            p.task([dependsOn: p.projectAllJavadoc, type: Jar], 'projectAllJavadocJar') {
                 classifier 'javadoc'
-                from "${project.buildDir}/docs/projectAllJavadoc"
-                baseName "${project.project_name}"
+                from "${p.buildDir}/docs/projectAllJavadoc"
+                baseName "${p.project_name}"
             }
 
-            project.task([type: Jar], 'projectAllSourcesJar') {
-                project.allModuleNames.each{ moduleName ->
-                    from project.sourceSets[moduleName].allSource
+            p.task([type: Jar], 'projectAllSourcesJar') {
+                p.allModuleNames.each{ moduleName ->
+                    from p.sourceSets[moduleName].allSource
                 }
                 classifier 'sources'
-                baseName "${project.project_name}"
+                baseName "${p.project_name}"
             }
 
-            project.tasks.findAll{ task -> task.name.startsWith('dist_')}.each{ dist_task ->
+            p.tasks.findAll{ task -> task.name.startsWith('dist_')}.each{ dist_task ->
                 dist_task.dependencies.each{ dep ->
                     def depCompileName = 'compile'+dep.replaceAll('\\.','')+'java'
-                    project.tasks.findAll{ comp_task -> comp_task.name.toLowerCase().equals(depCompileName)}.each {comp_task ->
-                        project.sourceSets[dist_task.moduleName].compileClasspath += project.files(project.sourceSets[dep].java.outputDir) { builtBy comp_task.name }
+                    p.tasks.findAll{ comp_task -> comp_task.name.toLowerCase().equals(depCompileName)}.each {comp_task ->
+                        p.sourceSets[dist_task.moduleName].compileClasspath += p.files(p.sourceSets[dep].java.outputDir) { builtBy comp_task.name }
                         if (dist_task.gwtSourceSetName!=null){
-                            project.sourceSets["${dist_task.gwtSourceSetName}"].compileClasspath += project.files(project.sourceSets[dep].java.outputDir) { builtBy comp_task.name }
+                            p.sourceSets["${dist_task.gwtSourceSetName}"].compileClasspath += p.files(p.sourceSets[dep].java.outputDir) { builtBy comp_task.name }
                         }
                         if (dist_task.requiresTest.toBoolean()){
-                            project.sourceSets.test.compileClasspath += project.files(project.sourceSets[dep].java.outputDir) { builtBy comp_task.name }
-                            project.sourceSets.test.runtimeClasspath += project.files(project.sourceSets[dep].java.outputDir) { builtBy comp_task.name }
+                            p.sourceSets.test.compileClasspath += p.files(p.sourceSets[dep].java.outputDir) { builtBy comp_task.name }
+                            p.sourceSets.test.runtimeClasspath += p.files(p.sourceSets[dep].java.outputDir) { builtBy comp_task.name }
                         }
                     }
                 }
 
                 if (dist_task.requiresJar.toBoolean()){
-                    project.tasks['jar_'+dist_task.moduleName].dependsOn{
-                        project.tasks.findAll{ comp_task -> comp_task.name.toLowerCase().equals('compile'+dist_task.moduleName.replaceAll('\\.','')+'java')}
+                    p.tasks['jar_'+dist_task.moduleName].dependsOn{
+                        p.tasks.findAll{ comp_task -> comp_task.name.toLowerCase().equals('compile'+dist_task.moduleName.replaceAll('\\.','')+'java')}
                     }
                 }
-                project.bindist.dependsOn dist_task
-                project.projectAllJar.dependsOn{
-                    project.tasks.findAll{ comp_task -> comp_task.name.toLowerCase().equals('compile'+dist_task.moduleName.replaceAll('\\.','')+'java')}
+                p.bindist.dependsOn dist_task
+                p.projectAllJar.dependsOn{
+                    p.tasks.findAll{ comp_task -> comp_task.name.toLowerCase().equals('compile'+dist_task.moduleName.replaceAll('\\.','')+'java')}
                 }
             }
 
             // fixed issue with libraries containing both .java and .class files
-            project.tasks.withType(JavaCompile) {
-                options.sourcepath=project.files()
+            p.tasks.withType(JavaCompile) {
+                options.sourcepath=p.files()
                 options.encoding='UTF-8'
             }
-            project.tasks.withType(Javadoc) {
+            p.tasks.withType(Javadoc) {
                 options.addStringOption("sourcepath", "")
                 if (JavaVersion.current().isJava8Compatible()) {
                     options.addStringOption("Xdoclint:none", "-quiet")
@@ -464,25 +553,25 @@ class OpenCmsModulesPlugin implements Plugin<Project> {
                 }
             }
 
-            project.artifacts {
-                archives project.projectAllJar
-                archives project.projectAllSourcesJar
-                archives project.projectAllJavadocJar
+            p.artifacts {
+                archives p.projectAllJar
+                archives p.projectAllSourcesJar
+                archives p.projectAllJavadocJar
             }
 
-            project.install {
+            p.install {
                 repositories {
                     mavenInstaller {
-                        addFilter("${project.project_name}"){artifact, file ->
-                            artifact.name.startsWith("${project.project_name}")
+                        addFilter("${p.project_name}"){artifact, file ->
+                            artifact.name.startsWith("${p.project_name}")
                         }
-                        pom("${project.project_name}").project {
-                            name "${project.project_nice_name} all"
-                            description "${project.project_nice_name} all modules"
+                        pom("${p.project_name}").project {
+                            name "${p.project_nice_name} all"
+                            description "${p.project_nice_name} all modules"
                             packaging 'jar'
                             groupId 'com.alkacon'
                             url 'http://www.alkacon.com'
-                            version project.build_version
+                            version p.build_version
                             licenses {
                                 license {
                                     name 'GNU General Public License'
@@ -505,11 +594,11 @@ class OpenCmsModulesPlugin implements Plugin<Project> {
                 }
             }
 
-            project.task([type: Wrapper], 'setGradleVersion'){
+            p.task([type: Wrapper], 'setGradleVersion'){
                 gradleVersion = GRADLE_VERSION
             }
         }catch(Exception e) {
-            project.logger.error("${HORIZONTAL_LINE}\nFailed to configure OpenCms modules project:\n\n${e.message} \n\nUse the opencmsPluginDescription task to view plugin description.\n${HORIZONTAL_LINE}\n\n")
+            p.logger.error("${HORIZONTAL_LINE}\nFailed to configure OpenCms modules project:\n\n${e.message} \n\nUse the opencmsPluginDescription task to view plugin description.\n${HORIZONTAL_LINE}\n\n",e)
         }
     }
 }
