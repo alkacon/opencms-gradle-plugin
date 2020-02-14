@@ -42,8 +42,8 @@ public class OpenCmsModulesDefaultDependencyPlugin implements Plugin<Project> {
      **/
     void apply(Project project) {
         project.getExtensions().create("ocDependencies", OpenCmsModulesExtension.class)
-        println "Initialized ocDependencies ${project.getExtensions().getByName('ocDependencies')}."
-        println "Initialized ocDependencies with addDefaultOpenCmsDependencies: ${project.getExtensions().getByName('ocDependencies').addDefaultOpenCmsDependencies}."
+        println "Initialized ocDependencies."
+        //        project.getExtensions().getByName('ocDependencies').printState()
 
         project.task('ocDependenciesDemo') {
             doLast {

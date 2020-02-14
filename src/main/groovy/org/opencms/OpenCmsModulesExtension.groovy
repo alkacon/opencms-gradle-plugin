@@ -31,20 +31,97 @@
 
 package org.opencms;
 
+import org.gradle.util.ConfigureUtil
+
 public class OpenCmsModulesExtension {
-    Boolean addDefaultOpenCmsDependencies = Boolean.TRUE
-    Boolean addDefaultOpenCmsTestDependencies = Boolean.TRUE
-    String addJUnitTestDependencyVersion = '4.12'
-    String addHSqlDbDependencyVersion = '2.3.2'
+
+    public static final String DEFAULT_JUNIT_VERSION = "4.12"
+    public static final String DEFAULT_HSQLDB_VERSION = "2.3.2"
+    public class DependencyConfiguration {
+
+        boolean opencmsCore;
+        boolean opencmsSetup;
+        boolean opencmsGwt;
+        boolean opencmsModules;
+        boolean opencmsTest;
+        boolean hsqldb;
+        boolean junit;
+
+        public DependencyConfiguration(boolean core, boolean gwt, boolean modules, boolean setup, boolean test, String hsqldb, String junit) {
+            opencmsCore = core
+            opencmsGwt = gwt
+            opencmsModules = modules
+            opencmsSetup = setup
+            opencmsTest = test
+            this.hsqldb = hsqldb
+            this.junit = junit
+        }
+
+        public List<String> getDependenies(String opencmsVersion) {
+            List<String> dependencies = new ArrayList<>(7);
+            if (opencmsCore) {
+                dependencies.add(makeDependency('org.opencms', 'opencms-core', opencmsVersion))
+            }
+            if (opencmsGwt) {
+                dependencies.add(makeDependency('org.opencms', 'opencms-gwt', opencmsVersion))
+            }
+            if (opencmsModules) {
+                dependencies.add(makeDependency('org.opencms', 'opencms-modules', opencmsVersion))
+            }
+            if (opencmsSetup) {
+                dependencies.add(makeDependency('org.opencms', 'opencms-setup', opencmsVersion))
+            }
+            if (opencmsTest) {
+                dependencies.add(makeDependency('org.opencms', 'opencms-test', opencmsVersion))
+            }
+            if (hsqldb) {
+                dependencies.add(makeDependency('org.hsqldb', 'hsqldb', DEFAULT_HSQLDB_VERSION))
+            }
+            if (junit) {
+                dependencies.add(makeDependency('junit', 'junit', DEFAULT_JUNIT_VERSION))
+            }
+            return dependencies;
+        }
+
+        private String makeDependency(String group, String artifact, String version) {
+            return "${group}:${artifact}:${version}"
+        }
+        public void printState(String linePrefix) {
+            println (linePrefix + "opencmsCore=" + opencmsCore)
+            println (linePrefix + "opencmsGwt=" + opencmsGwt)
+            println (linePrefix + "opencmsModules=" + opencmsModules)
+            println (linePrefix + "opencmsSetup=" + opencmsSetup)
+            println (linePrefix + "opencmsTest=" + opencmsTest)
+            println (linePrefix + "hsqldb=" + hsqldb)
+            println (linePrefix + "junit=" + junit)
+        }
+    }
+    DependencyConfiguration compile = new DependencyConfiguration(true,false,true,false,false,"","");
+    DependencyConfiguration testCompile = new DependencyConfiguration(false,false,false,true,true,DEFAULT_HSQLDB_VERSION,DEFAULT_JUNIT_VERSION);
+    boolean inModuleDeps = false
+    boolean ignoreTestDeps = false
+
+    void compile(Closure closure) {
+        (ConfigureUtil.configureUsing(closure)).execute(compile);
+    }
+
+    void testCompile(Closure closure) {
+        (ConfigureUtil.configureUsing(closure)).execute(testCompile);
+    }
 
     public void printState() {
+        println ""
         println "OpenCms default dependencies are configured as follows"
         println "======================================================"
         println "ocDefaultDependencies {"
-        println "  addDefaultOpenCmsDependencies ${addDefaultOpenCmsDependencies}"
-        println "  addDefaultOpenCmsTestDependencies ${addDefaultOpenCmsDependencies}"
-        println "  addJUnitTestDependencyVersion: ${addJUnitTestDependencyVersion}"
-        println " addHSqlDbDependencyVersion: ${addHSqlDbDependencyVersion}"
+        println "  compile {"
+        compile.printState("    ")
+        println "  }"
+        println "  testCompile {"
+        testCompile.printState("    ")
+        println "  }"
+        println "  inModuleDeps=${inModuleDeps}"
+        println "  ignoreTestDeps=${ignoreTestDeps}"
         println "}"
         println ""
     }

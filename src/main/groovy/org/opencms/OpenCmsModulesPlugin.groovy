@@ -37,9 +37,11 @@ import org.gradle.api.tasks.wrapper.Wrapper
  **/
 class OpenCmsModulesPlugin implements Plugin<Project> {
 
-    private static final String GRADLE_VERSION='6.1'
+    private static final String GRADLE_VERSION='6.1.1'
     private static final String DEFAULT_JAVA_COMPATIBILITY='1.8'
     private static final String PROJECT_EXTENSION = "ocDependencies"
+    private static final String DEFAULT_BUILD_DIR = "build/modules"
+    private static final String DEFAULT_MAX_HEAPSIZE = "1024m"
 
     private static final String HORIZONTAL_LINE='==============================================================================='
 
@@ -50,7 +52,7 @@ class OpenCmsModulesPlugin implements Plugin<Project> {
      **/
     void apply(Project p) {
 
-        def ocDependencies = null;
+        def OpenCmsModulesExtension ocDependencies = null;
         try {
             ocDependencies = p.getExtensions().getByName('ocDependencies');
         } catch (UnknownDomainObjectException ex) {
@@ -59,6 +61,8 @@ class OpenCmsModulesPlugin implements Plugin<Project> {
 
         if (p.hasProperty('build_directory')) {
             p.buildDir = p.build_directory
+        } else {
+            p.buildDir = DEFAULT_BUILD_DIR;
         }
 
         if (p.hasProperty('java_target_version')) {
@@ -123,45 +127,37 @@ class OpenCmsModulesPlugin implements Plugin<Project> {
             println "You are using default OpenCms dependencies with the following configuration:"
             println ""
             ocDependencies.printState()
-            if (ocDependencies.addDefaultOpenCmsDependencies) {
-                println "Adding default opencms compile dependencies:"
-                println " - compile group: 'org.opencms', name: 'opencms-core', version: ${p.opencms_version}"
+            if (ocDependencies.inModuleDeps) {
+                println "Adding jars placed in some lib* folder to the moduleDeps:"
                 println " - moduleDeps p.fileTree(dir: '.').matching {"
-                println "     include '**/lib/*.jar'"
+                println "     include '**/lib*/*.jar'"
+                println "     exclude 'build/*"
                 println "   }"
                 p.dependencies {
-                    compile group: 'org.opencms', name: 'opencms-core', version: p.opencms_version
                     moduleDeps p.fileTree(dir: '.').matching {
-                        include '**/lib/*.jar'
+                        include '**/lib*/*.jar'
+                        exclude 'build/*'
                     }
                 }
             }
-            if (ocDependencies.addDefaultOpenCmsTestDependencies) {
-                println "Adding default opencms testCompile dependencies:"
-                println " - compile group: 'org.opencms', name: 'opencms-setup', version: ${p.opencms_version}"
-                println " - compile group: 'org.opencms', name: 'opencms-modules', version: ${p.opencms_version}"
-                println " - compile group: 'org.opencms', name: 'opencms-test', version: ${p.opencms_version}"
-                p.dependencies {
-                    compile group: 'org.opencms', name: 'opencms-setup', version: p.opencms_version
-                    compile group: 'org.opencms', name: 'opencms-modules', version: p.opencms_version
-                    compile group: 'org.opencms', name: 'opencms-test', version: p.opencms_version
+            def List<String> compileDependencies = ocDependencies.compile.getDependenies(p.opencms_version)
+            if (compileDependencies.isEmpty()) {
+                printn "No default compile dependencies are added."
+            } else {
+                println "Adding default compile dependencies:"
+                for(String dependency : compileDependencies) {
+                    println " - compile ${dependency}"
+                    p.dependencies.add("compile", dependency)
                 }
             }
-            def jUnitDep = ocDependencies.addJUnitTestDependencyVersion;
-            if (null != jUnitDep && !jUnitDep.isEmpty()) {
-                println "Adding junit version ${jUnitDep} as testCompile dependency:"
-                println " - testCompile group: 'junit', name: 'junit', version: ${jUnitDep}"
-
-                p.dependencies {
-                    testCompile group: 'junit', name: 'junit', version: jUnitDep
-                }
-            }
-            def hSqlDbDep = ocDependencies.addHSqlDbDependencyVersion;
-            if (null != hSqlDbDep && !hSqlDbDep.isEmpty()) {
-                println "Adding hsqldb version ${hSqlDbDep} as testCompile dependency."
-                println " - testCompile group: 'junit', name: 'junit', version: ${hSqlDbDep}"
-                p.dependencies {
-                    testCompile group: 'org.hsqldb', name: 'hsqldb', version: hSqlDbDep
+            def List<String> testCompileDependencies = ocDependencies.testCompile.getDependenies(p.opencms_version)
+            if (testCompileDependencies.isEmpty()) {
+                printn "No default testCompile dependencies are added."
+            } else {
+                println "Adding default testCompile dependencies:"
+                for(String dependency : testCompileDependencies) {
+                    println " - testCompile ${dependency}"
+                    p.dependencies.add("testCompile", dependency)
                 }
             }
         }
@@ -178,12 +174,14 @@ class OpenCmsModulesPlugin implements Plugin<Project> {
             println "The Modules are compiled with the core directly."
             println "Replacing dependencies to the following core artifacts with the core project \"${coreproject}\":"
             println " - org.opencms:opencms-core"
+            println " - org.opencms:opencms-gwt"
             println " - org.opencms:opencms-modules"
             println " - org.opencms:opencms-test"
             println " - org.opencms:opencms-setup"
             p.configurations.all {
                 resolutionStrategy.dependencySubstitution {
                     substitute module("org.opencms:opencms-core") with project(coreproject)
+                    substitute module("org.opencms:opencms-gwt") with project(coreproject)
                     substitute module("org.opencms:opencms-modules") with project(coreproject)
                     substitute module("org.opencms:opencms-test") with project(coreproject)
                     substitute module("org.opencms:opencms-setup") with project(coreproject)
@@ -214,11 +212,11 @@ class OpenCmsModulesPlugin implements Plugin<Project> {
                 println '    modules_list: the comma separated list of module names'
                 println ''
                 println 'Optional build properties:'
-                println '    build_directory: the build directory'
-                println '    java_target_version: the java source and compatibility version'
-                println '    max_heap_size: the heap size to use during GWT build'
-                println '    gwt_style: the GWT output style, use pretty for debug build, defaults to obfuscated'
-                println '    gwt_mode: the GWT compile mode, use draftCompile to speed up build times, defaults to strict'
+                println "    build_directory: the build directory (default: ${DEFAULT_BUILD_DIR})"
+                println "    java_target_version: the java source and compatibility version (default: ${DEFAULT_JAVA_COMPATIBILITY})"
+                println "    max_heap_size: the heap size to use during GWT build (default: ${DEFAULT_MAX_HEAP_SIZE})"
+                println '    gwt_style: the GWT output style, use pretty for debug build (default: obfuscated)'
+                println '    gwt_mode: the GWT compile mode, use draftCompile to speed up build times (default: strict)'
                 println HORIZONTAL_LINE
             }
         }
@@ -230,7 +228,7 @@ class OpenCmsModulesPlugin implements Plugin<Project> {
             p.ext.modulesAll=''
 
             if (!p.hasProperty('max_heap_size')){
-                p.ext.max_heap_size='1024m'
+                p.ext.max_heap_size=DEFAULT_MAX_HEAPSIZE
             }
 
             p.ext.allModuleNames = p.modules_list.split(',')
