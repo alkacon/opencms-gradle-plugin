@@ -455,7 +455,7 @@ class OpenCmsModulesPlugin implements Plugin<Project> {
                     p.dependencyLibs="${p.dependencyLibs}${d.name},"
                 }
                 from(p.projectDir) {
-                    include 'p.properties'
+                    include 'project.properties'
                     filter(ReplaceTokens, tokens: [
                         MODULES_ALL: ''+p.modulesAll,
                         MODULE_LIBS: ''+p.moduleLibs,
