@@ -275,6 +275,7 @@ class OpenCmsModulesPlugin implements Plugin<Project> {
                     p.sourceSets.test.compileClasspath += p.files(p.sourceSets[moduleName].java.outputDir) { builtBy p.sourceSets[moduleName].compileJavaTaskName }
                     p.sourceSets.test.runtimeClasspath += p.files(p.sourceSets[moduleName].java.outputDir) { builtBy p.sourceSets[moduleName].compileJavaTaskName }
                     p.sourceSets.test.java.srcDir "${moduleName}/test"
+                    p.sourceSets.test.resources.srcDir "${moduleName}/test"
                 }
                 def moduleDependencies=[]
                 def moduleVersion = p.version
