@@ -8,6 +8,7 @@ import org.gradle.api.Plugin
 import org.gradle.api.Project
 import org.gradle.api.UnknownDomainObjectException
 import org.gradle.api.tasks.Copy
+import org.gradle.api.tasks.Delete
 import org.gradle.api.tasks.JavaExec
 import org.gradle.api.tasks.bundling.Jar
 import org.gradle.api.tasks.bundling.Zip
@@ -42,6 +43,7 @@ class OpenCmsModulesPlugin implements Plugin<Project> {
     private static final String PROJECT_EXTENSION = "ocDependencies"
     private static final String DEFAULT_BUILD_DIR = "build/modules"
     private static final String DEFAULT_MAX_HEAPSIZE = "1024m"
+    private static final String DEFAULT_TEST_MODULE_FOLDER = "test/data/WEB-INF/packages"
 
     private static final String HORIZONTAL_LINE='==============================================================================='
 
@@ -195,6 +197,7 @@ class OpenCmsModulesPlugin implements Plugin<Project> {
                     srcDir "test/src"
                 }
                 compileClasspath=p.configurations.testCompile
+                resources.srcDir "test/src"
             }
         }
 
@@ -217,6 +220,7 @@ class OpenCmsModulesPlugin implements Plugin<Project> {
                 println "    max_heap_size: the heap size to use during GWT build (default: ${DEFAULT_MAX_HEAP_SIZE})"
                 println '    gwt_style: the GWT output style, use pretty for debug build (default: obfuscated)'
                 println '    gwt_mode: the GWT compile mode, use draftCompile to speed up build times (default: strict)'
+                println '    copy_module_test: the folder to copy modules for test case import to (default: test/data/WEB-INF/packages)'
                 println HORIZONTAL_LINE
             }
         }
@@ -231,6 +235,14 @@ class OpenCmsModulesPlugin implements Plugin<Project> {
                 p.ext.max_heap_size=DEFAULT_MAX_HEAPSIZE
             }
 
+            if (!p.hasProperty('copy_module_test')) {
+                p.ext.copy_module_test=DEFAULT_TEST_MODULE_FOLDER
+            }
+            def folder = p.file(p.copy_module_test)
+            if (!folder.exists() && folder.getParentFile().exists()) {
+                folder.mkdirs()
+            }
+            p.ext.copyModuleTestExists=p.file(p.copy_module_test).isDirectory()
             p.ext.allModuleNames = p.modules_list.split(',')
             p.ext.modulesDistsDir = p.file("${p.buildDir}/modulesZip")
 
@@ -254,6 +266,7 @@ class OpenCmsModulesPlugin implements Plugin<Project> {
                 def gwtSourceSetName = null
                 def propertyFile = p.file("${moduleFolder}/module.properties")
                 def gwtRename = null
+                def installForTests = false
                 if (propertyFile.exists()){
                     p.logger.lifecycle("checking properties for module $moduleName")
                     Properties moduleProperties= new Properties()
@@ -268,6 +281,7 @@ class OpenCmsModulesPlugin implements Plugin<Project> {
                             gwtRename=gwtModule
                         }
                     }
+                    installForTests = 'true'.equals(moduleProperties['testinstall'])
                 }
                 def testDir = p.file("${moduleFolder}/test")
                 def requiresTest = testDir.exists()
@@ -331,6 +345,37 @@ class OpenCmsModulesPlugin implements Plugin<Project> {
                         jvmArgs '-XX:MaxPermSize=256m'
                         testLogging.showStandardStreams = true
                         ignoreFailures true
+                    }
+                }
+                if (installForTests) {
+                    if (p.copyModuleTestExists) {
+                        if (p.hasProperty('noVersion')) {
+                            p.task([type: Copy], "installForTest_$moduleName") {
+                                from "${p.modulesDistsDir}/${moduleName}.zip"
+                                into p.copy_module_test
+                                doFirst {
+                                    println "copying ${p.modulesDistsDir}/${moduleName}.zip to ${p.copy_module_test}"
+                                }
+                                ext.moduleName="${moduleName}"
+                            }
+                        } else {
+                            p.task([type: Copy], "installForTest_$moduleName") {
+                                from "${p.modulesDistsDir}/${moduleName}-${moduleVersion}.zip"
+                                into p.copy_module_test
+                                rename("${moduleName}-${moduleVersion}.zip","${moduleName}.zip")
+                                doFirst {
+                                    println "copying ${p.modulesDistsDir}/${moduleName}-${moduleVersion}.zip to ${p.copy_module_test}/${moduleName}.zip"
+                                }
+                                ext.moduleName="${moduleName}"
+                            }
+                        }
+                        p.tasks["installForTest_$moduleName"].dependsOn("dist_$moduleName")
+                        p.tasks["test"].dependsOn("installForTest_$moduleName")
+                        if (requiresTest.toBoolean()) {
+                            p.tasks["test_$moduleName"].dependsOn("installForTest_$moduleName")
+                        }
+                    } else {
+                        println "WARN: Installing module $moduleName for testcases will not work. The property 'copy_module_test' is not set correctly."
                     }
                 }
                 p.task([type: Zip], "dist_$moduleName"){
@@ -524,6 +569,9 @@ class OpenCmsModulesPlugin implements Plugin<Project> {
                         if (dist_task.requiresTest.toBoolean()){
                             p.sourceSets.test.compileClasspath += p.files(p.sourceSets[dep].java.outputDir) { builtBy comp_task.name }
                             p.sourceSets.test.runtimeClasspath += p.files(p.sourceSets[dep].java.outputDir) { builtBy comp_task.name }
+                            if (p.tasks.findByName("installForTest_${dep}")) {
+                                tasks["test_${dist_task.moduleName}"].dependsOn("installForTest_${dep}")
+                            }
                         }
                     }
                 }
@@ -593,10 +641,20 @@ class OpenCmsModulesPlugin implements Plugin<Project> {
                 }
             }
 
+            if (p.copyModuleTestExists) {
+                p.task([type: Delete],"deleteInstallForTestCopies") {
+                    delete (p.fileTree(dir: p.copy_module_test).matching {
+                        p.tasks.findAll{ task -> task.name.startsWith('installForTest_')}.each{ install_task -> include "${install_task.moduleName}.zip" }
+                        includeEmptyDirs true
+                    })
+                }
+                p.tasks["clean"].dependsOn("deleteInstallForTestCopies")
+            }
             p.task([type: Wrapper], 'setGradleVersion'){
                 gradleVersion = GRADLE_VERSION
             }
-        }catch(Exception e) {
+
+        } catch(Exception e) {
             p.logger.error("${HORIZONTAL_LINE}\nFailed to configure OpenCms modules project:\n\n${e.message} \n\nUse the opencmsPluginDescription task to view plugin description.\n${HORIZONTAL_LINE}\n\n",e)
         }
     }
