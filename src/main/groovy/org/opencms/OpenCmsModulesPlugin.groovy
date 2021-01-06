@@ -52,6 +52,7 @@ class OpenCmsModulesPlugin implements Plugin<Project> {
      *
      * @param project the project that is being build
      **/
+    @Override
     void apply(Project p) {
 
         def OpenCmsModulesExtension ocDependencies = null;
@@ -645,7 +646,6 @@ class OpenCmsModulesPlugin implements Plugin<Project> {
                 p.task([type: Delete],"deleteInstallForTestCopies") {
                     delete (p.fileTree(dir: p.copy_module_test).matching {
                         p.tasks.findAll{ task -> task.name.startsWith('installForTest_')}.each{ install_task -> include "${install_task.moduleName}.zip" }
-                        includeEmptyDirs true
                     })
                 }
                 p.tasks["clean"].dependsOn("deleteInstallForTestCopies")

@@ -40,6 +40,7 @@ public class OpenCmsModulesDefaultDependencyPlugin implements Plugin<Project> {
      *
      * @param project the project that is being build
      **/
+    @Override
     void apply(Project project) {
         project.getExtensions().create("ocDependencies", OpenCmsModulesExtension.class)
         println "Initialized ocDependencies."
