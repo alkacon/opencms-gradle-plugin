@@ -101,9 +101,9 @@ class OpenCmsModulesPlugin implements Plugin<Project> {
                     }
                 }
             }
-            jcenter()
-            maven {
-                url "http://maven.nuiton.org/release/"
+            mavenCentral()
+            maven { 
+               url "https://maven.restlet.talend.com" 
             }
             maven {
                 url "http://software.rescarta.org/nexus/content/repositories/thirdparty/"
