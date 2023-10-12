@@ -1,6 +1,6 @@
 plugins {
     id 'groovy'
-    id 'maven'
+    id 'maven-publish'
     id 'signing'
 }
 
@@ -27,8 +27,31 @@ task sourcesJar(type: Jar) {
 }
 
 task setGradleVersion(type: Wrapper) {
-    gradleVersion = '6.1'
+    gradleVersion = '7.5.1'
 }
+
+task install(dependsOn: publishToMavenLocal) {
+    doFirst {
+        println "Installing artifacts for version $version"
+    }
+}
+
+if (project.hasProperty('publish_repository')) {
+    task uploadArchives(dependsOn: publish) {
+        doFirst {
+            println "Upload artifacts for version $version"
+        }
+    }
+}
+signing {
+    required { gradle.taskGraph.hasTask("uploadArchives") }
+    if (gradle.taskGraph.hasTask("uploadArchives")) {
+        /* uncomment if you want to use the external gpg command. */ 
+        // useGpgCmd()
+    }
+    sign publishing.publications
+}
+
 
 artifacts {
     archives jar
@@ -37,13 +60,61 @@ artifacts {
 
 }
 
-signing {
-    required {gradle.taskGraph.hasTask("uploadArchives") }
-    sign configurations.archives
+
+
+publishing {
+    publications {
+        opencmsPlugin(MavenPublication) {
+            artifactId = 'opencms-gradle-plugin'
+            from components.java
+            artifact javadocJar
+            artifact sourcesJar
+            pom {
+                name = 'OpenCms Modules Gradle Plugin'
+                description = 'This Gradle pugin can be used to build modules for OpenCms.'
+                url = 'http://www.opencms.org'
+                licenses {
+                    license {
+                        name = 'GNU Lesser General Public License'
+                        url = 'http://www.gnu.org/licenses/lgpl.html'
+                    }
+                }
+                developers {
+                    developer {
+                        url = 'https://www.alkacon.com'
+                        name = 'Alkacon Software'
+                    }
+                }
+                organization {
+                    name = 'Alkacon Software'
+                    url = 'https://www.alkacon.com'
+                }
+
+                scm {
+                    connection = 'scm:git@github.com:alkacon/opencms-gradle-plugin.git'
+                    developerConnection = 'scm:git@github.com:alkacon/opencms-gradle-plugin.git'
+                    url = 'scm:git@github.com:alkacon/opencms-gradle-plugin.git'
+                }
+            }
+        }
+    }
+
+    if (project.hasProperty('publish_repository')){
+        repositories {
+            maven {
+                credentials {
+                    username publish_user
+                    password publish_password
+                }
+                url publish_repository
+            }
+        }
+    }
+
 }
 
 
-
+/*
 if (project.hasProperty('publish_repository')){
     uploadArchives {
         it.dependsOn(signArchives)
@@ -84,4 +155,5 @@ if (project.hasProperty('publish_repository')){
         }
     }
 }
+*/
 

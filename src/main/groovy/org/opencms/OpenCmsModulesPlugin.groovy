@@ -16,7 +16,9 @@ import org.gradle.api.tasks.compile.JavaCompile
 import org.gradle.api.tasks.javadoc.Javadoc
 import org.gradle.api.tasks.testing.Test
 import org.gradle.api.tasks.wrapper.Wrapper
-
+import org.gradle.api.publish.tasks.GenerateModuleMetadata
+import org.gradle.api.publish.maven.MavenPublication
+import org.gradle.api.artifacts.ExternalModuleDependency
 /**
  * This Gradle plugin should be used to build modules for OpenCms.<p>
  *
@@ -106,10 +108,10 @@ class OpenCmsModulesPlugin implements Plugin<Project> {
                url "https://maven.restlet.talend.com" 
             }
             maven {
-                url "http://software.rescarta.org/nexus/content/repositories/thirdparty/"
+                url "https://software.rescarta.org/nexus/content/repositories/thirdparty/"
             }
             maven {
-                url "http://maven.vaadin.com/vaadin-addons"
+                url "https://maven.vaadin.com/vaadin-addons"
             }
         }
 
@@ -557,6 +559,12 @@ class OpenCmsModulesPlugin implements Plugin<Project> {
                 }
                 classifier 'sources'
                 baseName "${p.project_name}"
+                duplicatesStrategy 'exclude'
+            }
+            p.task([dependsOn: p.publishToMavenLocal], "install") {
+                doFirst {
+                    println("Installing artifacts for version ${p.build_version}")
+                }
             }
 
             p.tasks.findAll{ task -> task.name.startsWith('dist_')}.each{ dist_task ->
@@ -607,34 +615,66 @@ class OpenCmsModulesPlugin implements Plugin<Project> {
                 archives p.projectAllJavadocJar
             }
 
-            p.install {
-                repositories {
-                    mavenInstaller {
-                        addFilter("${p.project_name}"){artifact, file ->
-                            artifact.name.startsWith("${p.project_name}")
+            p.publishing {
+                publications {
+                    modules(MavenPublication) {
+                        artifactId = "${p.project_name}"
+                        artifact p.projectAllJar
+                        artifact p.projectAllSourcesJar {
+                            classifier 'sources'
                         }
-                        pom("${p.project_name}").project {
-                            name "${p.project_nice_name} all"
-                            description "${p.project_nice_name} all modules"
+                        artifact p.projectAllJavadocJar {
+                            classifier 'javadoc'
+                        }
+                        pom {
+                            name = "${p.project_nice_name} all"
+                            description = "${p.project_nice_name} all modules"
                             packaging 'jar'
-                            groupId 'com.alkacon'
-                            url 'http://www.alkacon.com'
-                            version p.build_version
+                            groupId = 'com.alkacon'
+                            url = 'http://www.alkacon.com'
+                            version = p.build_version
                             licenses {
                                 license {
-                                    name 'GNU General Public License'
-                                    url 'http://www.gnu.org/licenses/gpl.html'
-                                    distribution 'repo'
+                                    name = 'GNU General Public License'
+                                    url = 'http://www.gnu.org/licenses/gpl.html'
+                                    distribution = 'repo'
                                 }
                             }
                             organization {
-                                name 'Alkacon Software'
-                                url 'http://www.alkacon.com'
+                                name = 'Alkacon Software'
+                                url = 'http://www.alkacon.com'
                             }
                             developers {
                                 developer {
-                                    name 'Alkacon Software'
-                                    url 'http://www.alkacon.com'
+                                    name = 'Alkacon Software'
+                                    url = 'http://www.alkacon.com'
+                                }
+                            }
+                            withXml { xml -> 
+                                def depsNode = xml.asNode().appendNode("dependencies")
+                                def depsWithScopes = [
+                                    [p.configurations.compile.dependencies, "compile"],
+                                    [p.configurations.moduleDeps.dependencies, "compile"],
+                                    [p.configurations.testCompile.dependencies, "test"]
+                                    ]
+                                depsWithScopes.each { depsAndScope ->
+                                    def deps = depsAndScope[0]
+                                    def scope = depsAndScope[1]
+                                    deps.each { dep ->
+                                        if (dep instanceof ExternalModuleDependency) {
+                                            def depNode = depsNode.appendNode("dependency")
+                                            depNode.appendNode('groupId', dep.group)
+                                            depNode.appendNode('artifactId', dep.name)
+                                            depNode.appendNode('version', dep.version)
+                                            depNode.appendNode('scope', scope)
+                                            if (!dep.isTransitive()) {
+                                                def exclusionNode = depNode.appendNode("exclusions").appendNode("exclusion")
+                                                exclusionNode.appendNode('artifactId', '*')
+                                                exclusionNode.appendNode('groupId', '*')
+                                            }
+                                        }
+                                        
+                                    }
                                 }
                             }
                         }
@@ -652,6 +692,10 @@ class OpenCmsModulesPlugin implements Plugin<Project> {
             }
             p.task([type: Wrapper], 'setGradleVersion'){
                 gradleVersion = GRADLE_VERSION
+            }
+
+            p.tasks.withType(GenerateModuleMetadata) {
+                enabled = false
             }
 
         } catch(Exception e) {
