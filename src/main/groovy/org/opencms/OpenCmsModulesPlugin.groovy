@@ -536,6 +536,7 @@ class OpenCmsModulesPlugin implements Plugin<Project> {
                     println "Building JAR for ${p.project_nice_name} ALL"
                     println HORIZONTAL_LINE
                 }
+                duplicatesStrategy 'exclude'
             }
 
             p.task([type: Javadoc], 'projectAllJavadoc'){
