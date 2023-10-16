@@ -17,13 +17,13 @@ sourceCompatibility='1.8'
 targetCompatibility='1.8'
 
 task javadocJar(type: Jar, dependsOn: groovydoc) {
-    classifier = 'javadoc'
+    archiveClassifier = 'javadoc'
     from "${buildDir}/docs/groovydoc"
 }
 
 task sourcesJar(type: Jar) {
     from sourceSets.main.groovy.srcDirs
-    classifier = 'sources'
+    archiveClassifier = 'sources'
 }
 
 task setGradleVersion(type: Wrapper) {
@@ -45,10 +45,7 @@ if (project.hasProperty('publish_repository')) {
 }
 signing {
     required { gradle.taskGraph.hasTask("uploadArchives") }
-    if (gradle.taskGraph.hasTask("uploadArchives")) {
-        /* uncomment if you want to use the external gpg command. */ 
-        // useGpgCmd()
-    }
+    //useGpgCmd()
     sign publishing.publications
 }
 

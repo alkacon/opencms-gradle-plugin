@@ -123,6 +123,9 @@ class OpenCmsModulesPlugin implements Plugin<Project> {
                 description = 'used to compile the modules jars'
                 extendsFrom moduleDeps
             }
+            implementation {
+                extendsFrom compile
+            }
             testCompile {
                 description = 'used to compile and execute test cases'
                 extendsFrom compile
@@ -220,7 +223,7 @@ class OpenCmsModulesPlugin implements Plugin<Project> {
                 println 'Optional build properties:'
                 println "    build_directory: the build directory (default: ${DEFAULT_BUILD_DIR})"
                 println "    java_target_version: the java source and compatibility version (default: ${DEFAULT_JAVA_COMPATIBILITY})"
-                println "    max_heap_size: the heap size to use during GWT build (default: ${DEFAULT_MAX_HEAP_SIZE})"
+                println "    max_heap_size: the heap size to use during GWT build (default: ${DEFAULT_MAX_HEAPSIZE})"
                 println '    gwt_style: the GWT output style, use pretty for debug build (default: obfuscated)'
                 println '    gwt_mode: the GWT compile mode, use draftCompile to speed up build times (default: strict)'
                 println '    copy_module_test: the folder to copy modules for test case import to (default: test/data/WEB-INF/packages)'
@@ -289,8 +292,8 @@ class OpenCmsModulesPlugin implements Plugin<Project> {
                 def testDir = p.file("${moduleFolder}/test")
                 def requiresTest = testDir.exists()
                 if (requiresTest){
-                    p.sourceSets.test.compileClasspath += p.files(p.sourceSets[moduleName].java.outputDir) { builtBy p.sourceSets[moduleName].compileJavaTaskName }
-                    p.sourceSets.test.runtimeClasspath += p.files(p.sourceSets[moduleName].java.outputDir) { builtBy p.sourceSets[moduleName].compileJavaTaskName }
+                    p.sourceSets.test.compileClasspath += p.files(p.sourceSets[moduleName].java.classesDirectory) { builtBy p.sourceSets[moduleName].compileJavaTaskName }
+                    p.sourceSets.test.runtimeClasspath += p.files(p.sourceSets[moduleName].java.classesDirectory) { builtBy p.sourceSets[moduleName].compileJavaTaskName }
                     p.sourceSets.test.java.srcDir "${moduleName}/test"
                     p.sourceSets.test.resources.srcDir "${moduleName}/test"
                 }
@@ -319,8 +322,8 @@ class OpenCmsModulesPlugin implements Plugin<Project> {
                                 into "OPENCMS/gwt"
                             }
                         }
-                        archiveName moduleName+'.jar'
-                        baseName moduleName
+                        archiveFileName = moduleName+'.jar'
+                        archiveBaseName = moduleName
                         exclude '**/.gitignore'
                         exclude '**/test/**'
                         doFirst {
@@ -334,12 +337,12 @@ class OpenCmsModulesPlugin implements Plugin<Project> {
                     p.task([type: Test, dependsOn: p.sourceSets.test.compileJavaTaskName], "test_$moduleName") {
                         useJUnit()
                         classpath += p.sourceSets.test.compileClasspath
-                        classpath += p.files(p.sourceSets.test.java.outputDir)
+                        classpath += p.files(p.sourceSets.test.java.classesDirectory)
                         include "**/Test*"
                         // important: exclude all anonymous classes
                         exclude '**/*$*.class'
                         scanForTestClasses false
-                        testClassesDirs = p.files(p.sourceSets.test.java.outputDir)
+                        testClassesDirs = p.files(p.sourceSets.test.java.classesDirectory)
                         systemProperties['db.product'] = "hsqldb"
                         systemProperties['test.data.path'] = "${p.projectDir}/test/data"
                         systemProperties['test.webapp.path'] = "${p.projectDir}/test/webapp"
@@ -390,14 +393,14 @@ class OpenCmsModulesPlugin implements Plugin<Project> {
                     ext.requiresJar = requiresJar
                     ext.requiresTest = requiresTest
                     if (p.hasProperty('noVersion')) {
-                        version
+                        archiveVersion = null
                         p.modulesAll +="${moduleName}.zip,"
                     } else {
-                        version moduleVersion
+                        archiveVersion = moduleVersion
                         p.modulesAll +="${moduleName}-${moduleVersion}.zip,"
                     }
-                    destinationDir p.modulesDistsDir
-                    baseName moduleName
+                    destinationDirectory = p.modulesDistsDir
+                    archiveBaseName = moduleName
                     doFirst {
                         println HORIZONTAL_LINE
                         println "Building ZIP for $moduleName version $moduleVersion"
@@ -466,7 +469,7 @@ class OpenCmsModulesPlugin implements Plugin<Project> {
                                 p.sourceSets[moduleName].compileClasspath,
                                 p.sourceSets[gwtSourceSetName].java.srcDirs,
                                 p.sourceSets[gwtSourceSetName].output.resourcesDir,
-                                p.sourceSets[gwtSourceSetName].java.outputDir
+                                p.sourceSets[gwtSourceSetName].java.classesDirectory
                             ]
                         }
 
@@ -528,7 +531,7 @@ class OpenCmsModulesPlugin implements Plugin<Project> {
                 p.allModuleNames.each{ moduleName ->
                     from p.sourceSets[moduleName].output
                 }
-                baseName "${p.project_name}"
+                archiveBaseName = "${p.project_name}"
                 exclude '**/.gitignore'
                 exclude '**/test/**'
                 doFirst {
@@ -549,17 +552,17 @@ class OpenCmsModulesPlugin implements Plugin<Project> {
             }
 
             p.task([dependsOn: p.projectAllJavadoc, type: Jar], 'projectAllJavadocJar') {
-                classifier 'javadoc'
+                archiveClassifier = 'javadoc'
                 from "${p.buildDir}/docs/projectAllJavadoc"
-                baseName "${p.project_name}"
+                archiveBaseName = "${p.project_name}"
             }
 
             p.task([type: Jar], 'projectAllSourcesJar') {
                 p.allModuleNames.each{ moduleName ->
                     from p.sourceSets[moduleName].allSource
                 }
-                classifier 'sources'
-                baseName "${p.project_name}"
+                archiveClassifier = 'sources'
+                archiveBaseName = "${p.project_name}"
                 duplicatesStrategy 'exclude'
             }
             p.task([dependsOn: p.publishToMavenLocal], "install") {
@@ -572,13 +575,13 @@ class OpenCmsModulesPlugin implements Plugin<Project> {
                 dist_task.dependencies.each{ dep ->
                     def depCompileName = 'compile'+dep.replaceAll('\\.','')+'java'
                     p.tasks.findAll{ comp_task -> comp_task.name.toLowerCase().equals(depCompileName)}.each {comp_task ->
-                        p.sourceSets[dist_task.moduleName].compileClasspath += p.files(p.sourceSets[dep].java.outputDir) { builtBy comp_task.name }
+                        p.sourceSets[dist_task.moduleName].compileClasspath += p.files(p.sourceSets[dep].java.classesDirectory) { builtBy comp_task.name }
                         if (dist_task.gwtSourceSetName!=null){
-                            p.sourceSets["${dist_task.gwtSourceSetName}"].compileClasspath += p.files(p.sourceSets[dep].java.outputDir) { builtBy comp_task.name }
+                            p.sourceSets["${dist_task.gwtSourceSetName}"].compileClasspath += p.files(p.sourceSets[dep].java.classesDirectory) { builtBy comp_task.name }
                         }
                         if (dist_task.requiresTest.toBoolean()){
-                            p.sourceSets.test.compileClasspath += p.files(p.sourceSets[dep].java.outputDir) { builtBy comp_task.name }
-                            p.sourceSets.test.runtimeClasspath += p.files(p.sourceSets[dep].java.outputDir) { builtBy comp_task.name }
+                            p.sourceSets.test.compileClasspath += p.files(p.sourceSets[dep].java.classesDirectory) { builtBy comp_task.name }
+                            p.sourceSets.test.runtimeClasspath += p.files(p.sourceSets[dep].java.classesDirectory) { builtBy comp_task.name }
                             if (p.tasks.findByName("installForTest_${dep}")) {
                                 tasks["test_${dist_task.moduleName}"].dependsOn("installForTest_${dep}")
                             }
@@ -622,10 +625,10 @@ class OpenCmsModulesPlugin implements Plugin<Project> {
                         artifactId = "${p.project_name}"
                         artifact p.projectAllJar
                         artifact p.projectAllSourcesJar {
-                            classifier 'sources'
+                            archiveClassifier = 'sources'
                         }
                         artifact p.projectAllJavadocJar {
-                            classifier 'javadoc'
+                            archiveClassifier = 'javadoc'
                         }
                         pom {
                             name = "${p.project_nice_name} all"
