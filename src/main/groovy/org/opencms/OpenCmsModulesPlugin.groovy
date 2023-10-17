@@ -188,11 +188,11 @@ class OpenCmsModulesPlugin implements Plugin<Project> {
             println " - org.opencms:opencms-setup"
             p.configurations.all {
                 resolutionStrategy.dependencySubstitution {
-                    substitute module("org.opencms:opencms-core") with project(coreproject)
-                    substitute module("org.opencms:opencms-gwt") with project(coreproject)
-                    substitute module("org.opencms:opencms-modules") with project(coreproject)
-                    substitute module("org.opencms:opencms-test") with project(coreproject)
-                    substitute module("org.opencms:opencms-setup") with project(coreproject)
+                    substitute module("org.opencms:opencms-core") using project(coreproject)
+                    substitute module("org.opencms:opencms-gwt") using project(coreproject)
+                    substitute module("org.opencms:opencms-modules") using project(coreproject)
+                    substitute module("org.opencms:opencms-test") using project(coreproject)
+                    substitute module("org.opencms:opencms-setup") using project(coreproject)
                 }
             }
         }
