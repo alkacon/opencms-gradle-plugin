@@ -71,16 +71,16 @@ class OpenCmsModulesPlugin implements Plugin<Project> {
         }
 
         if (p.hasProperty('java_target_version')) {
-            p.targetCompatibility = p.java_target_version
+            p.java.targetCompatibility = p.java_target_version
         } else {
             println "Using plugins default Java target compatibility (${DEFAULT_JAVA_COMPATIBILITY}). To overwrite use property 'java_target_version'."
-            p.targetCompatibility = DEFAULT_JAVA_COMPATIBILITY
+            p.java.targetCompatibility = DEFAULT_JAVA_COMPATIBILITY
         }
         if (p.hasProperty('java_source_version')) {
-            p.sourceCompatibility = p.java_source_version
+            p.java.sourceCompatibility = p.java_source_version
         } else {
-            println "Java source compatibility not explicitly specified. Using target compatiblity (${p.targetCompatibility}). To overwrite use property 'java_source_version'."
-            p.sourceCompatibility = p.targetCompatibility
+            println "Java source compatibility not explicitly specified. Using target compatiblity (${p.java.targetCompatibility}). To overwrite use property 'java_source_version'."
+            p.java.sourceCompatibility = p.java.targetCompatibility
         }
 
         p.ext.gwtStyle='obfuscated'
@@ -129,6 +129,9 @@ class OpenCmsModulesPlugin implements Plugin<Project> {
             testCompile {
                 description = 'used to compile and execute test cases'
                 extendsFrom compile
+            }
+            testImplementation {
+                extendsFrom testCompile
             }
         }
         if (null != ocDependencies) {
@@ -336,8 +339,8 @@ class OpenCmsModulesPlugin implements Plugin<Project> {
                 if (requiresTest.toBoolean()) {
                     p.task([type: Test, dependsOn: p.sourceSets.test.compileJavaTaskName], "test_$moduleName") {
                         useJUnit()
-                        classpath += p.sourceSets.test.compileClasspath
-                        classpath += p.files(p.sourceSets.test.java.classesDirectory)
+                        def dc = p.sourceSets.test.compileClasspath
+                        classpath = dc + p.files(p.sourceSets.test.java.classesDirectory)
                         include "**/Test*"
                         // important: exclude all anonymous classes
                         exclude '**/*$*.class'
@@ -461,7 +464,7 @@ class OpenCmsModulesPlugin implements Plugin<Project> {
                             dir.mkdirs()
                         }
 
-                        main = 'com.google.gwt.dev.Compiler'
+                        mainClass = 'com.google.gwt.dev.Compiler'
 
                         classpath {
                             [

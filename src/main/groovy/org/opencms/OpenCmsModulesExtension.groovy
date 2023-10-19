@@ -31,7 +31,6 @@
 
 package org.opencms;
 
-import org.gradle.util.ConfigureUtil
 
 public class OpenCmsModulesExtension {
 
@@ -102,11 +101,13 @@ public class OpenCmsModulesExtension {
     boolean ignoreTestDeps = false
 
     void compile(Closure closure) {
-        (ConfigureUtil.configureUsing(closure)).execute(compile);
+        closure.delegate = compile
+        closure()
     }
 
     void testCompile(Closure closure) {
-        (ConfigureUtil.configureUsing(closure)).execute(testCompile);
+        closure.delegate = testCompile
+        closure()
     }
 
     public void printState() {
