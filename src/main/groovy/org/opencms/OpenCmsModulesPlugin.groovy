@@ -107,10 +107,7 @@ class OpenCmsModulesPlugin implements Plugin<Project> {
             maven { 
                url "https://maven.restlet.talend.com" 
             }
-            maven {
-                url "https://software.rescarta.org/nexus/content/repositories/thirdparty/"
-            }
-            maven {
+           maven {
                 url "https://maven.vaadin.com/vaadin-addons"
             }
         }
