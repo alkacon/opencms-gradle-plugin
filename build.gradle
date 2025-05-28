@@ -2,11 +2,23 @@ plugins {
     id 'groovy'
     id 'maven-publish'
     id 'signing'
+    id 'io.github.gradle-nexus.publish-plugin' version "2.0.0"
 }
 
 dependencies {
     implementation gradleApi()
     implementation localGroovy()
+}
+
+group="org.opencms"
+
+nexusPublishing {
+    repositories {
+        sonatype {
+            nexusUrl.set(uri("https://ossrh-staging-api.central.sonatype.com/service/local/"))
+            snapshotRepositoryUrl.set(uri("https://central.sonatype.com/repository/maven-snapshots/"))
+        }
+    }
 }
 
 repositories {
@@ -36,16 +48,19 @@ task install(dependsOn: publishToMavenLocal) {
     }
 }
 
-if (project.hasProperty('publish_repository')) {
-    task uploadArchives(dependsOn: publish) {
-        doFirst {
-            println "Upload artifacts for version $version"
-        }
+task uploadArchives(dependsOn: publish) {
+    doFirst {
+        println "Upload artifacts for version $version"
     }
 }
+afterEvaluate {
+	def uploadArchivesDeps = [tasks.findByName("publishToSonatype"), tasks.findByName("closeSonatypeStagingRepository")]
+	tasks.findByName("uploadArchives").dependsOn(uploadArchivesDeps) 
+}
+
 signing {
     required { gradle.taskGraph.hasTask("uploadArchives") }
-    //useGpgCmd()
+    useGpgCmd()
     sign publishing.publications
 }
 
@@ -95,62 +110,8 @@ publishing {
             }
         }
     }
-
-    if (project.hasProperty('publish_repository')){
-        repositories {
-            maven {
-                credentials {
-                    username publish_user
-                    password publish_password
-                }
-                url publish_repository
-            }
-        }
-    }
-
 }
 
 
-/*
-if (project.hasProperty('publish_repository')){
-    uploadArchives {
-        it.dependsOn(signArchives)
-        repositories {
-            mavenDeployer {
-                beforeDeployment { MavenDeployment deployment -> signing.signPom(deployment) }
-                repository(url: publish_repository) {
-                    authentication(userName: publish_user, password: publish_password)
-                }
-                pom.project {
-                    licenses {
-                        license {
-                            name 'GNU Lesser General Public License'
-                            url 'http://www.gnu.org/licenses/lgpl.html'
-                            distribution 'repo'
-                        }
-                    }
-                    organization {
-                        name 'Alkacon Software'
-                        url 'http://www.alkacon.com'
-                    }
-                    developers {
-                        developer {
-                            name 'Alkacon Software'
-                            url 'http://www.alkacon.com'
-                        }
-                    }
-                    url 'http://www.opencms.org'
-                    name 'OpenCms Modules Gradle Plugin'
-                    description 'This Gradle plugin can be used to build modules for OpenCms.'
-                    scm {
-                        url 'scm:git@github.com:alkacon/opencms-gradle-plugin.git'
-                        connection 'scm:git@github.com:alkacon/opencms-gradle-plugin.git'
-                        developerConnection 'scm:git@github.com:alkacon/opencms-gradle-plugin.git'
-                    }
-                }
-            }
-        }
-    }
-}
-*/
+
 
