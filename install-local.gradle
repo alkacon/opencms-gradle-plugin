@@ -1,0 +1,13 @@
+plugins {
+    id 'maven-publish'
+}
+
+publishing {
+    publications {
+        opencmsPlugin(MavenPublication) {
+            groupId = 'org.opencms'
+            artifactId = 'opencms-gradle-plugin'
+            artifact layout.buildDirectory.dir('libs/opencms-gradle-plugin-latest.jar')
+        }
+    }
+}
