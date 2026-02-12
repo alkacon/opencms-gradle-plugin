@@ -63,13 +63,6 @@ class OpenCmsModulesPlugin implements Plugin<Project> {
     @Override
     void apply(Project p) {
 
-        def OpenCmsModulesExtension ocDependencies = null;
-        try {
-            ocDependencies = p.getExtensions().getByName('ocDependencies');
-        } catch (UnknownDomainObjectException ex) {
-            // this is ok.
-        }
-
         // configure build directory
         def buildDirName = p.findProperty('build_directory') ?: DEFAULT_BUILD_DIR
         p.layout.buildDirectory.set(p.file(buildDirName))
@@ -133,39 +126,47 @@ class OpenCmsModulesPlugin implements Plugin<Project> {
             }
         }
 
-        if (null != ocDependencies) {
-            println "You are using default OpenCms dependencies with the following configuration:"
-            println ""
-            ocDependencies.printState()
-            if (ocDependencies.inModuleDeps.get()) {
-                println "Adding jars placed in some lib* folder to the moduleDeps:"
-                println " - moduleDeps p.fileTree(dir: '.').matching {"
-                println "     include '**/lib*/*.jar'"
-                println "     exclude 'build/*"
-                println "   }"
-                p.dependencies.add("moduleDeps", p.fileTree(dir: '.').matching {
-                    include '**/lib*/*.jar'
-                    exclude 'build/*'
-                })
+        p.afterEvaluate {
+            def OpenCmsModulesExtension ocDependencies = null;
+            try {
+                ocDependencies = p.getExtensions().getByName('ocDependencies');
+            } catch (UnknownDomainObjectException ex) {
+                // this is ok.
             }
-            def List<String> compileDependencies = ocDependencies.compile.getDependenies(p.opencms_version)
-            if (compileDependencies.isEmpty()) {
-                printn "No default compile dependencies are added."
-            } else {
-                println "Adding default compile dependencies:"
-                for(String dependency : compileDependencies) {
-                    println " - compile ${dependency}"
-                    p.dependencies.add("compile", dependency)
+            if (null != ocDependencies) {
+                println "You are using default OpenCms dependencies with the following configuration:"
+                println ""
+                ocDependencies.printState()
+                if (ocDependencies.inModuleDeps.get()) {
+                    println "Adding jars placed in some lib* folder to the moduleDeps:"
+                    println " - moduleDeps p.fileTree(dir: '.').matching {"
+                    println "     include '**/lib*/*.jar'"
+                    println "     exclude 'build/*"
+                    println "   }"
+                    p.dependencies.add("moduleDeps", p.fileTree(dir: '.').matching {
+                        include '**/lib*/*.jar'
+                        exclude 'build/*'
+                    })
                 }
-            }
-            def List<String> testCompileDependencies = ocDependencies.testCompile.getDependenies(p.opencms_version)
-            if (testCompileDependencies.isEmpty()) {
-                printn "No default testCompile dependencies are added."
-            } else {
-                println "Adding default testCompile dependencies:"
-                for(String dependency : testCompileDependencies) {
-                    println " - testCompile ${dependency}"
-                    p.dependencies.add("testCompile", dependency)
+                def List<String> compileDependencies = ocDependencies.compile.getDependencies(p.opencms_version)
+                if (compileDependencies.isEmpty()) {
+                    printn "No default compile dependencies are added."
+                } else {
+                    println "Adding default compile dependencies:"
+                    for(String dependency : compileDependencies) {
+                        println " - compile ${dependency}"
+                        p.dependencies.add("compile", dependency)
+                    }
+                }
+                def List<String> testCompileDependencies = ocDependencies.testCompile.getDependencies(p.opencms_version)
+                if (testCompileDependencies.isEmpty()) {
+                    printn "No default testCompile dependencies are added."
+                } else {
+                    println "Adding default testCompile dependencies:"
+                    for(String dependency : testCompileDependencies) {
+                        println " - testCompile ${dependency}"
+                        p.dependencies.add("testCompile", dependency)
+                    }
                 }
             }
         }

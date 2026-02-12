@@ -102,7 +102,7 @@ public class OpenCmsModulesExtension {
          * @param opencmsVersion the OpenCms version
          * @return the list of
          */
-        public List<String> getDependenies(String opencmsVersion) {
+        public List<String> getDependencies(String opencmsVersion) {
  
             List<String> dependencies = [];
             if (opencmsCore.get()) {
