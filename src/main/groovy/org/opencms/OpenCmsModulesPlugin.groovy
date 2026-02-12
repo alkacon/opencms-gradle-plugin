@@ -16,9 +16,11 @@ import org.gradle.api.tasks.compile.JavaCompile
 import org.gradle.api.tasks.javadoc.Javadoc
 import org.gradle.api.tasks.testing.Test
 import org.gradle.api.tasks.wrapper.Wrapper
+import org.gradle.api.plugins.JavaPluginExtension
 import org.gradle.api.publish.tasks.GenerateModuleMetadata
 import org.gradle.api.publish.maven.MavenPublication
 import org.gradle.api.artifacts.ExternalModuleDependency
+
 /**
  * This Gradle plugin should be used to build modules for OpenCms.<p>
  *
@@ -41,8 +43,13 @@ import org.gradle.api.artifacts.ExternalModuleDependency
 class OpenCmsModulesPlugin implements Plugin<Project> {
 
     private static final String GRADLE_VERSION='6.1.1'
-    private static final String DEFAULT_JAVA_COMPATIBILITY='1.8'
+
+    /** Default Java compatibility. */
+    private static final String DEFAULT_JAVA_COMPATIBILITY = '11'
+
     private static final String PROJECT_EXTENSION = "ocDependencies"
+
+    /** Default build directory */
     private static final String DEFAULT_BUILD_DIR = "build/modules"
     private static final String DEFAULT_MAX_HEAPSIZE = "1024m"
     private static final String DEFAULT_TEST_MODULE_FOLDER = "test/data/WEB-INF/packages"
@@ -50,9 +57,8 @@ class OpenCmsModulesPlugin implements Plugin<Project> {
     private static final String HORIZONTAL_LINE='==============================================================================='
 
     /**
-     * Called when applying to the build p.<p>
-     *
-     * @param project the project that is being build
+     * Called when applying to the build.<p>
+     * @param p the project that is being build
      **/
     @Override
     void apply(Project p) {
@@ -64,23 +70,27 @@ class OpenCmsModulesPlugin implements Plugin<Project> {
             // this is ok.
         }
 
-        if (p.hasProperty('build_directory')) {
-            p.buildDir = p.build_directory
-        } else {
-            p.buildDir = DEFAULT_BUILD_DIR;
-        }
+        // configure build directory
+        def buildDirName = p.findProperty('build_directory') ?: DEFAULT_BUILD_DIR
+        p.layout.buildDirectory.set(p.file(buildDirName))
 
-        if (p.hasProperty('java_target_version')) {
-            p.java.targetCompatibility = p.java_target_version
-        } else {
-            println "Using plugins default Java target compatibility (${DEFAULT_JAVA_COMPATIBILITY}). To overwrite use property 'java_target_version'."
-            p.java.targetCompatibility = DEFAULT_JAVA_COMPATIBILITY
+        // configure Java compatibility
+        def javaExtension = p.extensions.getByType(JavaPluginExtension)
+        def targetVer = p.findProperty('java_target_version') ?: DEFAULT_JAVA_COMPATIBILITY
+        def sourceVer = p.findProperty('java_source_version') ?: DEFAULT_JAVA_COMPATIBILITY
+        javaExtension.targetCompatibility = JavaVersion.toVersion(targetVer)
+        javaExtension.sourceCompatibility = JavaVersion.toVersion(sourceVer ?: targetVer)
+
+        // configure module dependencies
+        def moduleDeps = p.configurations.maybeCreate('moduleDeps').with {
+            description = 'additional dependencies required by modules'
+            it
         }
-        if (p.hasProperty('java_source_version')) {
-            p.java.sourceCompatibility = p.java_source_version
-        } else {
-            println "Java source compatibility not explicitly specified. Using target compatiblity (${p.java.targetCompatibility}). To overwrite use property 'java_source_version'."
-            p.java.sourceCompatibility = p.java.targetCompatibility
+        p.configurations.named('implementation').configure {
+            it.extendsFrom(moduleDeps)
+        }
+        p.configurations.named('testImplementation').configure {
+            it.extendsFrom(moduleDeps)
         }
 
         p.ext.gwtStyle='obfuscated'
@@ -93,7 +103,7 @@ class OpenCmsModulesPlugin implements Plugin<Project> {
             p.gwtMode=p.gwt_mode
         }
 
-
+        // configure repositories
         p.repositories {
             mavenLocal()
             if (p.hasProperty('additional_repositories')){
@@ -113,40 +123,30 @@ class OpenCmsModulesPlugin implements Plugin<Project> {
         }
 
         p.configurations {
-            moduleDeps {
-                description = 'additional dependencies required by modules, need to be added into the webapp lib folder'
-            }
             compile {
                 description = 'used to compile the modules jars'
                 extendsFrom moduleDeps
-            }
-            implementation {
-                extendsFrom compile
             }
             testCompile {
                 description = 'used to compile and execute test cases'
                 extendsFrom compile
             }
-            testImplementation {
-                extendsFrom testCompile
-            }
         }
+
         if (null != ocDependencies) {
             println "You are using default OpenCms dependencies with the following configuration:"
             println ""
             ocDependencies.printState()
-            if (ocDependencies.inModuleDeps) {
+            if (ocDependencies.inModuleDeps.get()) {
                 println "Adding jars placed in some lib* folder to the moduleDeps:"
                 println " - moduleDeps p.fileTree(dir: '.').matching {"
                 println "     include '**/lib*/*.jar'"
                 println "     exclude 'build/*"
                 println "   }"
-                p.dependencies {
-                    moduleDeps p.fileTree(dir: '.').matching {
-                        include '**/lib*/*.jar'
-                        exclude 'build/*'
-                    }
-                }
+                p.dependencies.add("moduleDeps", p.fileTree(dir: '.').matching {
+                    include '**/lib*/*.jar'
+                    exclude 'build/*'
+                })
             }
             def List<String> compileDependencies = ocDependencies.compile.getDependenies(p.opencms_version)
             if (compileDependencies.isEmpty()) {
@@ -171,7 +171,7 @@ class OpenCmsModulesPlugin implements Plugin<Project> {
         }
 
         if (p.file("dependencies.gradle").exists()) {
-            println "Adding custom dependencies from 'dependencies.gradle'"
+            println "Adding custom dependencies from 'dependencies.gradle'."
             p.apply([from: 'dependencies.gradle'])
         } else {
             println "No custom dependencies loaded. Add file 'dependencies.gradle' with to dependencies to add some."

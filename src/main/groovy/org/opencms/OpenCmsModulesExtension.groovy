@@ -202,8 +202,8 @@ public class OpenCmsModulesExtension {
         println "  testCompile {"
         testCompile.printState("    ")
         println "  }"
-        println "  inModuleDeps=${inModuleDeps}"
-        println "  ignoreTestDeps=${ignoreTestDeps}"
+        println "  inModuleDeps=${inModuleDeps.get()}"
+        println "  ignoreTestDeps=${ignoreTestDeps.get()}"
         println "}"
         println ""
     }
