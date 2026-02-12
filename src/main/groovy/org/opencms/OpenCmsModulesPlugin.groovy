@@ -115,25 +115,10 @@ class OpenCmsModulesPlugin implements Plugin<Project> {
             }
         }
 
-        p.configurations {
-            compile {
-                description = 'used to compile the modules jars'
-                extendsFrom moduleDeps
-            }
-            testCompile {
-                description = 'used to compile and execute test cases'
-                extendsFrom compile
-            }
-        }
-
         p.afterEvaluate {
-            def OpenCmsModulesExtension ocDependencies = null;
-            try {
-                ocDependencies = p.getExtensions().getByName('ocDependencies');
-            } catch (UnknownDomainObjectException ex) {
-                // this is ok.
-            }
-            if (null != ocDependencies) {
+            def opencmsVersion = p.findProperty('opencms_version') ?: 'master'
+            def OpenCmsModulesExtension ocDependencies = p.extensions.findByName("ocDependencies")
+            if (ocDependencies != null) {
                 println "You are using default OpenCms dependencies with the following configuration:"
                 println ""
                 ocDependencies.printState()
@@ -148,24 +133,24 @@ class OpenCmsModulesPlugin implements Plugin<Project> {
                         exclude 'build/*'
                     })
                 }
-                def List<String> compileDependencies = ocDependencies.compile.getDependencies(p.opencms_version)
+                def List<String> compileDependencies = ocDependencies.compile.getDependencies(opencmsVersion)
                 if (compileDependencies.isEmpty()) {
-                    printn "No default compile dependencies are added."
+                    println "No default compile dependencies are added."
                 } else {
                     println "Adding default compile dependencies:"
                     for(String dependency : compileDependencies) {
                         println " - compile ${dependency}"
-                        p.dependencies.add("compile", dependency)
+                        p.dependencies.add("implementation", dependency)
                     }
                 }
-                def List<String> testCompileDependencies = ocDependencies.testCompile.getDependencies(p.opencms_version)
+                def List<String> testCompileDependencies = ocDependencies.testCompile.getDependencies(opencmsVersion)
                 if (testCompileDependencies.isEmpty()) {
-                    printn "No default testCompile dependencies are added."
+                    println "No default testCompile dependencies are added."
                 } else {
                     println "Adding default testCompile dependencies:"
                     for(String dependency : testCompileDependencies) {
                         println " - testCompile ${dependency}"
-                        p.dependencies.add("testCompile", dependency)
+                        p.dependencies.add("testImplementation", dependency)
                     }
                 }
             }
@@ -203,7 +188,7 @@ class OpenCmsModulesPlugin implements Plugin<Project> {
                 java {
                     srcDir "test/src"
                 }
-                compileClasspath=p.configurations.testCompile
+                compileClasspath=p.configurations.testCompileClasspath
                 resources.srcDir "test/src"
             }
         }
@@ -255,14 +240,20 @@ class OpenCmsModulesPlugin implements Plugin<Project> {
 
             // iterate all configured modules
             p.allModuleNames.each{ moduleName ->
-                p.sourceSets.create(moduleName,{
+                p.sourceSets.create(moduleName, {
                     java {
                         srcDir "${moduleName}/src"
                         exclude '**/test/**'
                     }
                     resources.srcDir "${moduleName}/src"
                 });
-                p.sourceSets[moduleName].compileClasspath=p.configurations.compile
+                def moduleCompileClasspath = p.configurations.maybeCreate("${moduleName}CompileClasspath").with {
+                    canBeResolved = true
+                    extendsFrom moduleDeps
+                    extendsFrom p.configurations.implementation
+                    it
+                }
+                p.sourceSets[moduleName].compileClasspath=moduleCompileClasspath
                 def moduleFolder = p.file("${moduleName}")
                 def srcModule = p.file("${moduleFolder}/src")
                 def srcGwtDir = p.file("${moduleFolder}/src-gwt")
@@ -438,7 +429,7 @@ class OpenCmsModulesPlugin implements Plugin<Project> {
                             srcDirs srcGwtDir
                         }
                     })
-                    p.sourceSets[gwtSourceSetName].compileClasspath=p.configurations.compile
+                    p.sourceSets[gwtSourceSetName].compileClasspath=p.configurations.compileClasspath
                     p.task([dependsOn: p.tasks["${gwtSourceSetName}Classes"], type: JavaExec], "gwt_$moduleName") {
                         ext.buildDir =  p.buildDir.toString()  +"/gwt/$moduleName"
                         ext.extraDir =  p.buildDir.toString() + "/extra/$moduleName"
@@ -658,9 +649,9 @@ class OpenCmsModulesPlugin implements Plugin<Project> {
                             withXml { xml -> 
                                 def depsNode = xml.asNode().appendNode("dependencies")
                                 def depsWithScopes = [
-                                    [p.configurations.compile.dependencies, "compile"],
+                                    [p.configurations.implementation.dependencies, "compile"],
                                     [p.configurations.moduleDeps.dependencies, "compile"],
-                                    [p.configurations.testCompile.dependencies, "test"]
+                                    [p.configurations.testImplementation.dependencies, "test"]
                                     ]
                                 depsWithScopes.each { depsAndScope ->
                                     def deps = depsAndScope[0]
