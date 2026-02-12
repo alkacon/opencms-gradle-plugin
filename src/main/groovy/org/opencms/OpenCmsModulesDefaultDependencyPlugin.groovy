@@ -31,10 +31,12 @@
 
 package org.opencms;
 
+import org.gradle.api.artifacts.Configuration
 import org.gradle.api.Plugin
 import org.gradle.api.Project
 
 public class OpenCmsModulesDefaultDependencyPlugin implements Plugin<Project> {
+
     /**
      * Called when applying to the build project.<p>
      *
@@ -42,13 +44,34 @@ public class OpenCmsModulesDefaultDependencyPlugin implements Plugin<Project> {
      **/
     @Override
     void apply(Project project) {
-        project.getExtensions().create("ocDependencies", OpenCmsModulesExtension.class)
-        println "Initialized ocDependencies."
-        //        project.getExtensions().getByName('ocDependencies').printState()
 
-        project.task('ocDependenciesDemo') {
+        def extension = project.getExtensions().create('ocDependencies', OpenCmsModulesExtension)
+        println "Initialized ocDependencies."
+        project.tasks.register('ocDependenciesDemo') {
+            group = "OpenCms"
+            description = "Displays a ocDependencies { } configuration example."
             doLast {
-                (new OpenCmsModulesExtension()).printState()
+                extension.printState()
+            }
+        }
+        project.plugins.withId('java') {
+            project.configurations.named('implementation').configure { Configuration config ->
+                config.withDependencies { dependencies ->  // lazily evaluated when java dependencies are available
+                    String opencmsVersion = project.findProperty('opencms_version') ?: 'master'
+                    extension.compile.getDependencies(opencmsVersion).each { notation ->
+                        dependencies.add(project.dependencies.create(notation))
+                    }
+                }
+            }
+            project.configurations.named('testImplementation').configure { Configuration config ->
+                config.withDependencies { dependencies -> // lazily evaluated when java dependencies are available
+                    String opencmsVersion = project.findProperty('opencms_version') ?: 'master'
+                    if (!extension.ignoreTestDeps.get()) {
+                        extension.testCompile.getDependencies(opencmsVersion).each { notation ->
+                            dependencies.add(project.dependencies.create(notation))
+                        }
+                    }
+                }
             }
         }
     }

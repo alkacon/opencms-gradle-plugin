@@ -31,85 +31,166 @@
 
 package org.opencms;
 
+import org.gradle.api.Action
+import org.gradle.api.model.ObjectFactory
+import org.gradle.api.provider.Property
+import org.gradle.api.provider.ProviderFactory
+import javax.inject.Inject
 
+/**
+ * Provides a DSL for configuration of OpenCms default dependencies.
+ */
 public class OpenCmsModulesExtension {
 
+    /** Default configuration. */
     public static final String DEFAULT_JUNIT_VERSION = "4.12"
+    
+    /** Default configuration. */
     public static final String DEFAULT_HSQLDB_VERSION = "2.3.2"
-    public class DependencyConfiguration {
 
-        boolean opencmsCore;
-        boolean opencmsSetup;
-        boolean opencmsGwt;
-        boolean opencmsModules;
-        boolean opencmsTest;
-        boolean hsqldb;
-        boolean junit;
+    /**
+     * Internal class with all configuration details.
+     */
+    static class DependencyConfiguration {
 
-        public DependencyConfiguration(boolean core, boolean gwt, boolean modules, boolean setup, boolean test, String hsqldb, String junit) {
-            opencmsCore = core
-            opencmsGwt = gwt
-            opencmsModules = modules
-            opencmsSetup = setup
-            opencmsTest = test
-            this.hsqldb = hsqldb
-            this.junit = junit
+        /** Flag to activate dependency. */
+        final Property<Boolean> opencmsCore;
+        
+        /** Flag to activate dependency. */
+        final Property<Boolean> opencmsSetup;
+        
+        /** Flag to activate dependency. */
+        final Property<Boolean> opencmsGwt;
+        
+        /** Flag to activate dependency. */
+        final Property<Boolean> opencmsModules;
+        
+        /** Flag to activate dependency. */
+        final Property<Boolean> opencmsTest;
+        
+        /** Dependency configuration. */
+        final Property<String> hsqldb;
+        
+        /** Dependency configuration. */
+        final Property<String> junit;
+
+        /**
+         * Creates a new dependency configuration.
+         * @param objects
+         * @param core
+         * @param gwt
+         * @param modules
+         * @param setup
+         * @param test
+         * @param hsqldb
+         * @param junit
+         */
+        @Inject
+        public DependencyConfiguration(ObjectFactory objects, boolean core, boolean gwt, boolean modules, boolean setup, boolean test, String hsqldb, String junit) {
+
+            this.opencmsCore = objects.property(Boolean).convention(core)
+            this.opencmsGwt = objects.property(Boolean).convention(gwt)
+            this.opencmsModules = objects.property(Boolean).convention(modules)
+            this.opencmsSetup = objects.property(Boolean).convention(setup)
+            this.opencmsTest = objects.property(Boolean).convention(test)
+            this.hsqldb = objects.property(String).convention(hsqldb)
+            this.junit = objects.property(String).convention(junit)
         }
 
+        /**
+         * Returns the list of configured dependencies for a given OpenCms version.
+         * @param opencmsVersion the OpenCms version
+         * @return the list of
+         */
         public List<String> getDependenies(String opencmsVersion) {
-            List<String> dependencies = new ArrayList<>(7);
-            if (opencmsCore) {
-                dependencies.add(makeDependency('org.opencms', 'opencms-core', opencmsVersion))
+ 
+            List<String> dependencies = [];
+            if (opencmsCore.get()) {
+                dependencies.add("org.opencms:opencms-core:${opencmsVersion}")
             }
-            if (opencmsGwt) {
-                dependencies.add(makeDependency('org.opencms', 'opencms-gwt', opencmsVersion))
+            if (opencmsGwt.get()) {
+                dependencies.add("org.opencms:opencms-gwt:${opencmsVersion}")
             }
-            if (opencmsModules) {
-                dependencies.add(makeDependency('org.opencms', 'opencms-modules', opencmsVersion))
+            if (opencmsModules.get()) {
+                dependencies.add("org.opencms:opencms-modules:${opencmsVersion}")
             }
-            if (opencmsSetup) {
-                dependencies.add(makeDependency('org.opencms', 'opencms-setup', opencmsVersion))
+            if (opencmsSetup.get()) {
+                dependencies.add("org.opencms:opencms-setup:${opencmsVersion}")
             }
-            if (opencmsTest) {
-                dependencies.add(makeDependency('org.opencms', 'opencms-test', opencmsVersion))
+            if (opencmsTest.get()) {
+                dependencies.add("org.opencms:opencms-test:${opencmsVersion}")
             }
-            if (hsqldb) {
-                dependencies.add(makeDependency('org.hsqldb', 'hsqldb', DEFAULT_HSQLDB_VERSION))
+            if (!hsqldb.get().isEmpty()) {
+                dependencies.add("org.hsqldb:hsqldb:${hsqldb.get()}")
             }
-            if (junit) {
-                dependencies.add(makeDependency('junit', 'junit', DEFAULT_JUNIT_VERSION))
+            if (!junit.get().isEmpty()) {
+                dependencies.add("junit:junit:${junit.get()}")
             }
             return dependencies;
         }
 
-        private String makeDependency(String group, String artifact, String version) {
-            return "${group}:${artifact}:${version}"
-        }
+        /**
+         * Prints the actual configuration.
+         * @param linePrefix
+         */
         public void printState(String linePrefix) {
-            println (linePrefix + "opencmsCore=" + opencmsCore)
-            println (linePrefix + "opencmsGwt=" + opencmsGwt)
-            println (linePrefix + "opencmsModules=" + opencmsModules)
-            println (linePrefix + "opencmsSetup=" + opencmsSetup)
-            println (linePrefix + "opencmsTest=" + opencmsTest)
-            println (linePrefix + "hsqldb=" + hsqldb)
-            println (linePrefix + "junit=" + junit)
+
+            println (linePrefix + "opencmsCore=" + opencmsCore.get())
+            println (linePrefix + "opencmsGwt=" + opencmsGwt.get())
+            println (linePrefix + "opencmsModules=" + opencmsModules.get())
+            println (linePrefix + "opencmsSetup=" + opencmsSetup.get())
+            println (linePrefix + "opencmsTest=" + opencmsTest.get())
+            println (linePrefix + "hsqldb=" + hsqldb.get())
+            println (linePrefix + "junit=" + junit.get())
         }
     }
-    DependencyConfiguration compile = new DependencyConfiguration(true,false,true,false,false,"","");
-    DependencyConfiguration testCompile = new DependencyConfiguration(false,false,false,true,true,DEFAULT_HSQLDB_VERSION,DEFAULT_JUNIT_VERSION);
-    boolean inModuleDeps = false
-    boolean ignoreTestDeps = false
 
-    void compile(Closure closure) {
-        closure.delegate = compile
-        closure()
+    /** Configuration details for compile { } */
+    final DependencyConfiguration compile
+    
+    /** Configuration details for testCompile { } */
+    final DependencyConfiguration testCompile
+
+    /** Whether there are module specific dependencies. */
+    final Property<Boolean> inModuleDeps
+
+    /** Whether to ignore the test dependencies. */
+    final Property<Boolean> ignoreTestDeps
+
+    /**
+     * Creates a new configuration.
+     * @param objects
+     */
+    @Inject
+    public OpenCmsModulesExtension(ObjectFactory objects) {
+
+        this.inModuleDeps = objects.property(Boolean).convention(false)
+        this.ignoreTestDeps = objects.property(Boolean).convention(false)
+        this.compile = objects.newInstance(DependencyConfiguration, true, false, true, false, false, "", "")
+        this.testCompile = objects.newInstance(DependencyConfiguration, false, false, false, true, true, DEFAULT_HSQLDB_VERSION, DEFAULT_JUNIT_VERSION)
     }
 
-    void testCompile(Closure closure) {
-        closure.delegate = testCompile
-        closure()
+    /**
+     * DSL method for compile { }
+     * @param action
+     */
+    void compile(Action<? super DependencyConfiguration> action) {
+
+        action.execute(compile)
     }
 
+    /**
+     * DSL method for testCompile { }
+     * @param action
+     */
+    void testCompile(Action<? super DependencyConfiguration> action) {
+        
+        action.execute(testCompile)
+    }
+
+    /**
+     * Prints the actual dependency configuration.
+     */
     public void printState() {
         println ""
         println "OpenCms default dependencies are configured as follows"
