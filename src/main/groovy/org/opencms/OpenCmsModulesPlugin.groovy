@@ -42,28 +42,35 @@ import org.gradle.api.artifacts.ExternalModuleDependency
  **/
 class OpenCmsModulesPlugin implements Plugin<Project> {
 
-    private static final String GRADLE_VERSION='6.1.1'
+    /** Default Gradle version. */
+    private static final String GRADLE_VERSION = '8.10.2'
 
     /** Default Java compatibility. */
     private static final String DEFAULT_JAVA_COMPATIBILITY = '11'
 
+    /** Name of the OpenCms dependencies extension. */
     private static final String PROJECT_EXTENSION = "ocDependencies"
 
     /** Default build directory */
     private static final String DEFAULT_BUILD_DIR = "build/modules"
+
+    /** Default max heap size. */
     private static final String DEFAULT_MAX_HEAPSIZE = "1024m"
+
+    /** Default test module folder. */
     private static final String DEFAULT_TEST_MODULE_FOLDER = "test/data/WEB-INF/packages"
 
+    /** Output helper. */
     private static final String HORIZONTAL_LINE='==============================================================================='
 
     /**
-     * Called when applying to the build.<p>
-     * @param p the project that is being build
+     * Called when applying the build.<p>
+     * @param p the project to build
      **/
     @Override
     void apply(Project p) {
 
-        // configure build directory
+        // configure the build directory
         def buildDirName = p.findProperty('build_directory') ?: DEFAULT_BUILD_DIR
         p.layout.buildDirectory.set(p.file(buildDirName))
 
@@ -86,16 +93,6 @@ class OpenCmsModulesPlugin implements Plugin<Project> {
             it.extendsFrom(moduleDeps)
         }
 
-        p.ext.gwtStyle='obfuscated'
-        if (p.hasProperty('gwt_style')) {
-            p.gwtStyle=p.gwt_style
-        }
-
-        p.ext.gwtMode='strict'
-        if (p.hasProperty('gwt_mode')) {
-            p.gwtMode=p.gwt_mode
-        }
-
         // configure repositories
         p.repositories {
             mavenLocal()
@@ -115,6 +112,7 @@ class OpenCmsModulesPlugin implements Plugin<Project> {
             }
         }
 
+        // lazily load the default dependencies
         p.afterEvaluate {
             def opencmsVersion = p.findProperty('opencms_version') ?: 'master'
             def OpenCmsModulesExtension ocDependencies = p.extensions.findByName("ocDependencies")
@@ -133,7 +131,7 @@ class OpenCmsModulesPlugin implements Plugin<Project> {
                         exclude 'build/*'
                     })
                 }
-                def List<String> compileDependencies = ocDependencies.compile.getDependencies(opencmsVersion)
+                List<String> compileDependencies = ocDependencies.compile.getDependencies(opencmsVersion)
                 if (compileDependencies.isEmpty()) {
                     println "No default compile dependencies are added."
                 } else {
@@ -143,7 +141,7 @@ class OpenCmsModulesPlugin implements Plugin<Project> {
                         p.dependencies.add("implementation", dependency)
                     }
                 }
-                def List<String> testCompileDependencies = ocDependencies.testCompile.getDependencies(opencmsVersion)
+                List<String> testCompileDependencies = ocDependencies.testCompile.getDependencies(opencmsVersion)
                 if (testCompileDependencies.isEmpty()) {
                     println "No default testCompile dependencies are added."
                 } else {
@@ -156,6 +154,7 @@ class OpenCmsModulesPlugin implements Plugin<Project> {
             }
         }
 
+        // load the root project "dependencies.gradle" file
         if (p.file("dependencies.gradle").exists()) {
             println "Adding custom dependencies from 'dependencies.gradle'."
             p.apply([from: 'dependencies.gradle'])
@@ -193,7 +192,9 @@ class OpenCmsModulesPlugin implements Plugin<Project> {
             }
         }
 
-        p.task('opencmsPluginDescription'){
+        p.tasks.register('opencmsPluginDescription') {
+            group = 'OpenCms'
+            description = 'Dsiplays a detailed description of all plugin functions.'
             doFirst{
                 println HORIZONTAL_LINE
                 println 'OpenCms modules plugin description'
@@ -217,6 +218,16 @@ class OpenCmsModulesPlugin implements Plugin<Project> {
             }
         }
 
+        p.ext.gwtStyle='obfuscated'
+        if (p.hasProperty('gwt_style')) {
+            p.gwtStyle=p.gwt_style
+        }
+
+        p.ext.gwtMode='strict'
+        if (p.hasProperty('gwt_mode')) {
+            p.gwtMode=p.gwt_mode
+        }
+
         try {
             p.ext.modulesDistsDir = p.file("${p.buildDir}/modulesZip")
             p.ext.moduleLibs=''
@@ -234,7 +245,7 @@ class OpenCmsModulesPlugin implements Plugin<Project> {
             if (!folder.exists() && folder.getParentFile().exists()) {
                 folder.mkdirs()
             }
-            p.ext.copyModuleTestExists=p.file(p.copy_module_test).isDirectory()
+            p.ext.copyModuleTestExists = p.file(p.copy_module_test).isDirectory()
             p.ext.allModuleNames = p.modules_list.split(',')
             p.ext.modulesDistsDir = p.file("${p.buildDir}/modulesZip")
 
@@ -247,13 +258,32 @@ class OpenCmsModulesPlugin implements Plugin<Project> {
                     }
                     resources.srcDir "${moduleName}/src"
                 });
+                def currentModuleDeps = p.configurations.maybeCreate("moduleDeps_${moduleName}").with {
+                    description = "Dependencies for module ${moduleName}"
+                    extendsFrom p.configurations.moduleDeps
+                    it
+                }
+                def modDepFile = p.file("${moduleName}/dependencies.gradle")
+                if (modDepFile.exists()) {
+                    println "Adding custom dependencies from ${modDepFile}."
+                    p.apply from: modDepFile
+                }
+                def copyTask = p.tasks.register("copyDeps_${moduleName}", Copy) {
+                    group = "OpenCms"
+                    from currentModuleDeps
+                    into p.layout.buildDirectory.dir("deps")
+                    duplicatesStrategy = 'exclude'
+                }
                 def moduleCompileClasspath = p.configurations.maybeCreate("${moduleName}CompileClasspath").with {
                     canBeResolved = true
                     extendsFrom moduleDeps
+                    extendsFrom currentModuleDeps
                     extendsFrom p.configurations.implementation
                     it
                 }
                 p.sourceSets[moduleName].compileClasspath=moduleCompileClasspath
+                p.configurations.compileClasspath.extendsFrom(currentModuleDeps)
+                p.configurations.runtimeClasspath.extendsFrom(currentModuleDeps)
                 def moduleFolder = p.file("${moduleName}")
                 def srcModule = p.file("${moduleFolder}/src")
                 def srcGwtDir = p.file("${moduleFolder}/src-gwt")
@@ -299,7 +329,7 @@ class OpenCmsModulesPlugin implements Plugin<Project> {
                     moduleVersion = parsedManifest.module[0].version[0].text()
                 }
                 if (requiresJar.toBoolean()) {
-                    p.task([type: Jar],"jar_$moduleName") {
+                    p.tasks.register("jar_${moduleName}", Jar) {
                         ext.moduleName = moduleName
                         ext.moduleVersion= moduleVersion
                         manifest {
@@ -376,7 +406,11 @@ class OpenCmsModulesPlugin implements Plugin<Project> {
                         println "WARN: Installing module $moduleName for testcases will not work. The property 'copy_module_test' is not set correctly."
                     }
                 }
-                p.task([type: Zip], "dist_$moduleName"){
+                p.tasks.register("dist_$moduleName", Zip){
+                    group = "OpenCms"
+                    if (requiresJar.toBoolean()) {
+                        dependsOn "jar_${moduleName}", copyTask
+                    }
                     ext.moduleName = moduleName
                     ext.moduleFolder = moduleFolder
                     ext.dependencies = moduleDependencies
@@ -412,7 +446,6 @@ class OpenCmsModulesPlugin implements Plugin<Project> {
                     }
                 }
                 if (requiresJar.toBoolean()) {
-                    p.tasks["dist_$moduleName"].dependsOn("jar_$moduleName")
                     p.moduleLibs+="${moduleName}.jar,"
                 }
 
@@ -510,11 +543,15 @@ class OpenCmsModulesPlugin implements Plugin<Project> {
                 into p.modulesDistsDir
             }
 
-            p.task([dependsOn: [
-                    p.copyDeps,
-                    p.copyProjectProps
-                ]], 'bindist') {
-                doFirst{
+            p.tasks.register('bindist') {
+                group = 'OpenCms'
+                description = 'Creates the binary distribution containing all modules.'
+                dependsOn = [
+                    p.tasks.matching { it.name.startsWith("dist_") },
+                    p.tasks.named('copyDeps'),
+                    p.tasks.named('copyProjectProps')
+                ]
+                doFirst {
                     println 'Done'
                 }
             }
@@ -563,7 +600,7 @@ class OpenCmsModulesPlugin implements Plugin<Project> {
                 }
             }
 
-            p.tasks.findAll{ task -> task.name.startsWith('dist_')}.each{ dist_task ->
+            p.tasks.findAll{ task -> task.name.startsWith('dist_')}.each { dist_task ->
                 dist_task.dependencies.each{ dep ->
                     def depCompileName = 'compile'+dep.replaceAll('\\.','')+'java'
                     p.tasks.findAll{ comp_task -> comp_task.name.toLowerCase().equals(depCompileName)}.each {comp_task ->
@@ -686,6 +723,7 @@ class OpenCmsModulesPlugin implements Plugin<Project> {
                 }
                 p.tasks["clean"].dependsOn("deleteInstallForTestCopies")
             }
+
             p.task([type: Wrapper], 'setGradleVersion'){
                 gradleVersion = GRADLE_VERSION
             }
