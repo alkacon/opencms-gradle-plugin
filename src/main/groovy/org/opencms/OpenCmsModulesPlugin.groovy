@@ -154,7 +154,14 @@ class OpenCmsModulesPlugin implements Plugin<Project> {
             }
         }
 
-        // load the root project "dependencies.gradle" file
+        // prepare module specific configurations
+        p.ext.allModuleNames = p.modules_list.split(',')
+        p.ext.allModuleNames.each { moduleName ->
+            def deps = p.configurations.maybeCreate("moduleDeps_${moduleName}")
+            p.ext."moduleDeps_${moduleName}" = deps
+        }
+
+        // load the "dependencies.gradle" file
         if (p.file("dependencies.gradle").exists()) {
             println "Adding custom dependencies from 'dependencies.gradle'."
             p.apply([from: 'dependencies.gradle'])
@@ -246,7 +253,6 @@ class OpenCmsModulesPlugin implements Plugin<Project> {
                 folder.mkdirs()
             }
             p.ext.copyModuleTestExists = p.file(p.copy_module_test).isDirectory()
-            p.ext.allModuleNames = p.modules_list.split(',')
             p.ext.modulesDistsDir = p.file("${p.buildDir}/modulesZip")
 
             // iterate all configured modules
@@ -527,30 +533,25 @@ class OpenCmsModulesPlugin implements Plugin<Project> {
                 into "${p.buildDir}/deps"
             }
 
-            p.task([type: Copy], 'copyProjectProps'){
-                p.configurations.moduleDeps.each {d ->
-                    p.dependencyLibs="${p.dependencyLibs}${d.name},"
-                }
-                from(p.projectDir) {
-                    include 'project.properties'
-                    filter(ReplaceTokens, tokens: [
-                        MODULES_ALL: ''+p.modulesAll,
-                        MODULE_LIBS: ''+p.moduleLibs,
-                        DEPENDENCY_LIBS: ''+p.dependencyLibs
-                    ])
-
-                }
-                into p.modulesDistsDir
-            }
-
             p.tasks.register('bindist') {
                 group = 'OpenCms'
-                description = 'Creates the binary distribution containing all modules.'
+                description = 'Creates the binary distribution containing all modules or a group of modules matching a pattern. Example: -Ppattern=org.opencms.extension'
+                dependsOn p.provider {
+                    def pattern = p.findProperty("pattern") ?: ""
+                    def matchingTasks = p.tasks.matching {
+                        it.name.startsWith("dist_") && it.name.contains(pattern)
+                    }
+                    matchingTasks
+                }
                 dependsOn = [
-                    p.tasks.matching { it.name.startsWith("dist_") },
-                    p.tasks.named('copyDeps'),
-                    p.tasks.named('copyProjectProps')
+                    p.tasks.named('copyDeps')
                 ]
+                doFirst {
+                    def pattern = p.findProperty("pattern") ?: ""
+                    if (pattern) {
+                        println "Running bindist for pattern: '${pattern}'"
+                    }
+                }
                 doFirst {
                     println 'Done'
                 }
@@ -594,6 +595,7 @@ class OpenCmsModulesPlugin implements Plugin<Project> {
                 archiveBaseName = "${p.project_name}"
                 duplicatesStrategy 'exclude'
             }
+
             p.task([dependsOn: p.publishToMavenLocal], "install") {
                 doFirst {
                     println("Installing artifacts for version ${p.build_version}")
@@ -634,6 +636,7 @@ class OpenCmsModulesPlugin implements Plugin<Project> {
                 options.sourcepath=p.files()
                 options.encoding='UTF-8'
             }
+
             p.tasks.withType(Javadoc) {
                 options.addStringOption("sourcepath", "")
                 if (JavaVersion.current().isJava8Compatible()) {
