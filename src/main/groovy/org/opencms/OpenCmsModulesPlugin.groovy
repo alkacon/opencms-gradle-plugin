@@ -275,7 +275,6 @@ class OpenCmsModulesPlugin implements Plugin<Project> {
                     p.apply from: modDepFile
                 }
                 def copyTask = p.tasks.register("copyDeps_${moduleName}", Copy) {
-                    group = "OpenCms"
                     from currentModuleDeps
                     into p.layout.buildDirectory.dir("deps")
                     duplicatesStrategy = 'exclude'
@@ -336,6 +335,8 @@ class OpenCmsModulesPlugin implements Plugin<Project> {
                 }
                 if (requiresJar.toBoolean()) {
                     p.tasks.register("jar_${moduleName}", Jar) {
+                        group = 'OpenCms'
+                        description = "Assembles a jar archive containing the classes for module '${moduleName}'."
                         ext.moduleName = moduleName
                         ext.moduleVersion= moduleVersion
                         manifest {
@@ -362,21 +363,42 @@ class OpenCmsModulesPlugin implements Plugin<Project> {
                     }
                 }
                 if (requiresTest.toBoolean()) {
-                    p.task([type: Test, dependsOn: p.sourceSets.test.compileJavaTaskName], "test_$moduleName") {
+                    def testSourceSetConfig = javaExtension.sourceSets.maybeCreate("test_${moduleName}")
+                    testSourceSetConfig.java.srcDir "${moduleName}/test"
+                    def moduleSourceSet = p.sourceSets[moduleName]
+                    testSourceSetConfig.compileClasspath += moduleSourceSet.output
+                    testSourceSetConfig.runtimeClasspath += moduleSourceSet.output
+                    def implementationName = testSourceSetConfig.implementationConfigurationName
+                    p.configurations.named(implementationName).configure {
+                        it.extendsFrom(p.configurations.named("moduleDeps_${moduleName}").get())
+                        it.extendsFrom(p.configurations.testImplementation)
+                    }
+                    testSourceSetConfig.compileClasspath += javaExtension.sourceSets.main.output
+                    testSourceSetConfig.runtimeClasspath += javaExtension.sourceSets.main.output
+                    p.tasks.register("test_${moduleName}", Test) {
+                        group = 'OpenCms'
+                        description = "Runs isolated unit tests for module ${moduleName} using JUnit."
+                        //dependsOn p.sourceSets.test.compileJavaTaskName
                         useJUnit()
-                        def dc = p.sourceSets.test.compileClasspath
-                        classpath = dc + p.files(p.sourceSets.test.java.classesDirectory)
+                        def testSourceSet = p.sourceSets."test_${moduleName}"
+                        testClassesDirs = testSourceSet.output.classesDirs
+                        classpath = testSourceSet.runtimeClasspath
+                        reports {
+                            html.outputLocation.set(p.layout.buildDirectory.dir("reports/tests/${moduleName}"))
+                            junitXml.outputLocation.set(p.layout.buildDirectory.dir("test-results/${moduleName}"))
+                        }
+                        //def dc = p.sourceSets.test.compileClasspath
+                        //classpath = dc + p.files(p.sourceSets.test.java.classesDirectory)
                         include "**/Test*"
                         // important: exclude all anonymous classes
                         exclude '**/*$*.class'
                         scanForTestClasses false
-                        testClassesDirs = p.files(p.sourceSets.test.java.classesDirectory)
+                        //testClassesDirs = p.files(p.sourceSets.test.java.classesDirectory)
                         systemProperties['db.product'] = "hsqldb"
                         systemProperties['test.data.path'] = "${p.projectDir}/test/data"
                         systemProperties['test.webapp.path'] = "${p.projectDir}/test/webapp"
-                        systemProperties['test.build.folder'] =p.sourceSets.test.output.resourcesDir
+                        systemProperties['test.build.folder'] = p.sourceSets.test.output.resourcesDir
                         maxHeapSize = p.max_heap_size
-                        jvmArgs '-XX:MaxPermSize=256m'
                         testLogging.showStandardStreams = true
                         ignoreFailures true
                     }
@@ -384,7 +406,7 @@ class OpenCmsModulesPlugin implements Plugin<Project> {
                 if (installForTests) {
                     if (p.copyModuleTestExists) {
                         if (p.hasProperty('noVersion')) {
-                            p.task([type: Copy], "installForTest_$moduleName") {
+                            p.tasks.register("installForTest_${moduleName}", Copy) {
                                 from "${p.modulesDistsDir}/${moduleName}.zip"
                                 into p.copy_module_test
                                 doFirst {
@@ -393,7 +415,7 @@ class OpenCmsModulesPlugin implements Plugin<Project> {
                                 ext.moduleName="${moduleName}"
                             }
                         } else {
-                            p.task([type: Copy], "installForTest_$moduleName") {
+                            p.task("installForTest_${moduleName}", Copy) {
                                 from "${p.modulesDistsDir}/${moduleName}-${moduleVersion}.zip"
                                 into p.copy_module_test
                                 rename("${moduleName}-${moduleVersion}.zip","${moduleName}.zip")
@@ -412,8 +434,10 @@ class OpenCmsModulesPlugin implements Plugin<Project> {
                         println "WARN: Installing module $moduleName for testcases will not work. The property 'copy_module_test' is not set correctly."
                     }
                 }
+
                 p.tasks.register("dist_$moduleName", Zip){
-                    group = "OpenCms"
+                    group = 'OpenCms'
+                    description = "Builds the binary distribution for module '${moduleName}'."
                     if (requiresJar.toBoolean()) {
                         dependsOn "jar_${moduleName}", copyTask
                     }
@@ -469,7 +493,10 @@ class OpenCmsModulesPlugin implements Plugin<Project> {
                         }
                     })
                     p.sourceSets[gwtSourceSetName].compileClasspath=p.configurations.compileClasspath
-                    p.task([dependsOn: p.tasks["${gwtSourceSetName}Classes"], type: JavaExec], "gwt_$moduleName") {
+                    p.tasks.register("gwt_$moduleName", JavaExec) {
+                        group = 'OpenCms'
+                        description = "Compiles the GWT module ${moduleName} into browser-executable JavaScript."
+                        dependsOn "${gwtSourceSetName}Classes"
                         ext.buildDir =  p.buildDir.toString()  +"/gwt/$moduleName"
                         ext.extraDir =  p.buildDir.toString() + "/extra/$moduleName"
                         ext.moduleName = moduleName
@@ -528,36 +555,30 @@ class OpenCmsModulesPlugin implements Plugin<Project> {
                 }
             }
 
-            p.task([type: Copy], 'copyDeps'){
+            p.tasks.register('copyDeps', Copy){
                 from p.configurations.moduleDeps
                 into "${p.buildDir}/deps"
             }
 
             p.tasks.register('bindist') {
                 group = 'OpenCms'
-                description = 'Creates the binary distribution containing all modules or a group of modules matching a pattern. Example: -Ppattern=org.opencms.extension'
+                description = 'Creates the binary distribution for all modules, or optionally a group of modules matching a pattern using "-Ppattern=org.opencms.extension".'
                 dependsOn p.provider {
-                    def pattern = p.findProperty("pattern") ?: ""
-                    def matchingTasks = p.tasks.matching {
-                        it.name.startsWith("dist_") && it.name.contains(pattern)
+                    def pattern = p.findProperty('pattern') ?: ''
+                    def matchingDistTasks = p.tasks.matching { t ->
+                        t.name.startsWith("dist_") && t.name.contains(pattern)
                     }
-                    matchingTasks
+                    return matchingDistTasks
                 }
-                dependsOn = [
-                    p.tasks.named('copyDeps')
-                ]
-                doFirst {
-                    def pattern = p.findProperty("pattern") ?: ""
-                    if (pattern) {
-                        println "Running bindist for pattern: '${pattern}'"
-                    }
-                }
+                dependsOn 'copyDeps'
                 doFirst {
                     println 'Done'
                 }
             }
 
-            p.task([type: Jar], 'projectAllJar'){
+            p.tasks.register('projectAllJar', Jar) {
+                group = 'OpenCms'
+                description = 'Instead of creating one JAR for each module, builds one JAR for all modules.'
                 p.allModuleNames.each{ moduleName ->
                     from p.sourceSets[moduleName].output
                 }
@@ -572,23 +593,30 @@ class OpenCmsModulesPlugin implements Plugin<Project> {
                 duplicatesStrategy 'exclude'
             }
 
-            p.task([type: Javadoc], 'projectAllJavadoc'){
+            p.tasks.register('projectAllJavadoc', Javadoc) {
+                group = 'OpenCms'
+                description = 'Creates Javadoc for all modules.'
                 p.allModuleNames.each{ moduleName ->
                     source += p.sourceSets[moduleName].allJava
                     classpath += p.sourceSets[moduleName].compileClasspath
                 }
                 destinationDir = p.file("${p.buildDir}/docs/projectAllJavadoc")
-                options.addStringOption("sourcepath", "")
+                options.addStringOption('sourcepath', '')
             }
 
-            p.task([dependsOn: p.projectAllJavadoc, type: Jar], 'projectAllJavadocJar') {
+            p.tasks.register('projectAllJavadocJar', Jar) {
+                group = 'OpenCms'
+                description = 'Aggregates Javadoc from all modules into a single, combined JAR archive.'
+                dependsOn 'projectAllJavadoc'
                 archiveClassifier = 'javadoc'
                 from "${p.buildDir}/docs/projectAllJavadoc"
                 archiveBaseName = "${p.project_name}"
             }
 
-            p.task([type: Jar], 'projectAllSourcesJar') {
-                p.allModuleNames.each{ moduleName ->
+            p.tasks.register('projectAllSourcesJar', Jar) {
+                group = 'OpenCms'
+                description = 'Aggregates source code from all modules into a single, combined JAR archive.'
+                p.allModuleNames.each { moduleName ->
                     from p.sourceSets[moduleName].allSource
                 }
                 archiveClassifier = 'sources'
@@ -596,14 +624,17 @@ class OpenCmsModulesPlugin implements Plugin<Project> {
                 duplicatesStrategy 'exclude'
             }
 
-            p.task([dependsOn: p.publishToMavenLocal], "install") {
+            p.tasks.register('install') {
+                group = 'OpenCms'
+                description = 'Publishes the project artifacts for all modules to the local Maven repository.'
+                dependsOn 'publishToMavenLocal'
                 doFirst {
                     println("Installing artifacts for version ${p.build_version}")
                 }
             }
 
             p.tasks.findAll{ task -> task.name.startsWith('dist_')}.each { dist_task ->
-                dist_task.dependencies.each{ dep ->
+                dist_task.dependencies.each { dep ->
                     def depCompileName = 'compile'+dep.replaceAll('\\.','')+'java'
                     p.tasks.findAll{ comp_task -> comp_task.name.toLowerCase().equals(depCompileName)}.each {comp_task ->
                         p.sourceSets[dist_task.moduleName].compileClasspath += p.files(p.sourceSets[dep].java.classesDirectory) { builtBy comp_task.name }
@@ -619,14 +650,12 @@ class OpenCmsModulesPlugin implements Plugin<Project> {
                         }
                     }
                 }
-
-                if (dist_task.requiresJar.toBoolean()){
-                    p.tasks['jar_'+dist_task.moduleName].dependsOn{
+                if (dist_task.requiresJar.toBoolean()) {
+                    p.tasks['jar_'+dist_task.moduleName].dependsOn {
                         p.tasks.findAll{ comp_task -> comp_task.name.toLowerCase().equals('compile'+dist_task.moduleName.replaceAll('\\.','')+'java')}
                     }
                 }
-                p.bindist.dependsOn dist_task
-                p.projectAllJar.dependsOn{
+                p.projectAllJar.dependsOn {
                     p.tasks.findAll{ comp_task -> comp_task.name.toLowerCase().equals('compile'+dist_task.moduleName.replaceAll('\\.','')+'java')}
                 }
             }
@@ -719,15 +748,15 @@ class OpenCmsModulesPlugin implements Plugin<Project> {
             }
 
             if (p.copyModuleTestExists) {
-                p.task([type: Delete],"deleteInstallForTestCopies") {
+                p.tasks.register('deleteInstallForTestCopies', Delete) {
                     delete (p.fileTree(dir: p.copy_module_test).matching {
-                        p.tasks.findAll{ task -> task.name.startsWith('installForTest_')}.each{ install_task -> include "${install_task.moduleName}.zip" }
+                        p.tasks.findAll{ task -> task.name.startsWith('installForTest_')}.each { install_task -> include "${install_task.moduleName}.zip" }
                     })
                 }
                 p.tasks["clean"].dependsOn("deleteInstallForTestCopies")
             }
 
-            p.task([type: Wrapper], 'setGradleVersion'){
+            p.tasks.register('setGradleVersion', Wrapper) {
                 gradleVersion = GRADLE_VERSION
             }
 
