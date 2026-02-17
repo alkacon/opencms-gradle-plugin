@@ -256,7 +256,7 @@ class OpenCmsModulesPlugin implements Plugin<Project> {
             p.ext.modulesDistsDir = p.file("${p.buildDir}/modulesZip")
 
             // iterate all configured modules
-            p.allModuleNames.each{ moduleName ->
+            p.allModuleNames.each { moduleName ->
                 p.sourceSets.create(moduleName, {
                     java {
                         srcDir "${moduleName}/src"
@@ -278,6 +278,10 @@ class OpenCmsModulesPlugin implements Plugin<Project> {
                     from currentModuleDeps
                     into p.layout.buildDirectory.dir("deps")
                     duplicatesStrategy = 'exclude'
+                    doFirst {
+                        def fileNames = currentModuleDeps.collect { it.name }.join(',')
+                        p.ext.dependencyLibs += fileNames + ','
+                    }
                 }
                 def moduleCompileClasspath = p.configurations.maybeCreate("${moduleName}CompileClasspath").with {
                     canBeResolved = true
@@ -359,6 +363,7 @@ class OpenCmsModulesPlugin implements Plugin<Project> {
                             println HORIZONTAL_LINE
                             println "Building JAR for $moduleName version $moduleVersion"
                             println HORIZONTAL_LINE
+                            p.moduleLibs+="${moduleName}.jar,"
                         }
                     }
                 }
@@ -448,19 +453,19 @@ class OpenCmsModulesPlugin implements Plugin<Project> {
                     ext.gwtRenameTo = gwtRename
                     ext.requiresJar = requiresJar
                     ext.requiresTest = requiresTest
-                    if (p.hasProperty('noVersion')) {
-                        archiveVersion = null
-                        p.modulesAll +="${moduleName}.zip,"
-                    } else {
-                        archiveVersion = moduleVersion
-                        p.modulesAll +="${moduleName}-${moduleVersion}.zip,"
-                    }
                     destinationDirectory = p.modulesDistsDir
                     archiveBaseName = moduleName
                     doFirst {
                         println HORIZONTAL_LINE
                         println "Building ZIP for $moduleName version $moduleVersion"
                         println HORIZONTAL_LINE
+                        if (p.hasProperty('noVersion')) {
+                            archiveVersion = null
+                            p.modulesAll +="${moduleName}.zip,"
+                        } else {
+                            archiveVersion = moduleVersion
+                            p.modulesAll +="${moduleName}-${moduleVersion}.zip,"
+                        }
                     }
                     // excluding jars from modules, jars will be placed in the WEB-INF lib folder through the deployment process
                     from("${moduleFolder}/resources"){
@@ -474,9 +479,6 @@ class OpenCmsModulesPlugin implements Plugin<Project> {
                             filter { line -> line.replaceAll('/.categories', '/_categories') }
                         }
                     }
-                }
-                if (requiresJar.toBoolean()) {
-                    p.moduleLibs+="${moduleName}.jar,"
                 }
 
                 if (gwtModule != null){
@@ -558,6 +560,23 @@ class OpenCmsModulesPlugin implements Plugin<Project> {
             p.tasks.register('copyDeps', Copy){
                 from p.configurations.moduleDeps
                 into "${p.buildDir}/deps"
+                doFirst {
+                    def fileNames = p.configurations.moduleDeps.collect { it.name }.join(',')
+                    p.ext.dependencyLibs += fileNames + ','
+                }
+            }
+
+            p.tasks.register('copyProjectProps', Copy) {
+                dependsOn 'copyDeps'
+                from(p.projectDir) {
+                    include 'project.properties'
+                    filter { String line ->
+                        line.replace('@MODULES_ALL@', p.findProperty('modulesAll')?.toString() ?: '')
+                            .replace('@MODULE_LIBS@', p.findProperty('moduleLibs')?.toString() ?: '')
+                            .replace('@DEPENDENCY_LIBS@', p.findProperty('dependencyLibs')?.toString() ?: '')
+                    }
+                }
+                into p.modulesDistsDir
             }
 
             p.tasks.register('bindist') {
@@ -573,6 +592,20 @@ class OpenCmsModulesPlugin implements Plugin<Project> {
                 dependsOn 'copyDeps'
                 doFirst {
                     println 'Done'
+                }
+            }
+            
+            p.afterEvaluate {
+                def startTaskNames = p.gradle.startParameter.taskNames
+                if (startTaskNames.contains("bindist") || startTaskNames.contains(":bindist")) {
+                    p.tasks.named('bindist').configure {
+                        finalizedBy 'copyProjectProps'
+                    }
+                } else {
+                    // this only runs once even for ./gradlew dist_org.opencms.module1 dist_org.opencms.module2
+                    p.tasks.matching { it.name.startsWith("dist_") }.all { distTask ->
+                        distTask.finalizedBy 'copyProjectProps'
+                    }
                 }
             }
 
