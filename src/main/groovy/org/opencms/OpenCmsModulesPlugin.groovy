@@ -156,6 +156,7 @@ class OpenCmsModulesPlugin implements Plugin<Project> {
 
         // prepare module specific configurations
         p.ext.allModuleNames = p.modules_list.split(',')
+        p.extensions.create('ocModule', OpenCmsModuleDependencyExtension, p)
         p.ext.allModuleNames.each { moduleName ->
             def deps = p.configurations.maybeCreate("moduleDeps_${moduleName}")
             p.ext."moduleDeps_${moduleName}" = deps
@@ -268,11 +269,6 @@ class OpenCmsModulesPlugin implements Plugin<Project> {
                     description = "Dependencies for module ${moduleName}"
                     extendsFrom p.configurations.moduleDeps
                     it
-                }
-                def modDepFile = p.file("${moduleName}/dependencies.gradle")
-                if (modDepFile.exists()) {
-                    println "Adding custom dependencies from ${modDepFile}."
-                    p.apply from: modDepFile
                 }
                 def copyTask = p.tasks.register("copyDeps_${moduleName}", Copy) {
                     from currentModuleDeps
