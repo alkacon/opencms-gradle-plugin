@@ -54,14 +54,17 @@ task uploadArchives(dependsOn: publish) {
     }
 }
 afterEvaluate {
-	def uploadArchivesDeps = [tasks.findByName("publishToSonatype"), tasks.findByName("closeSonatypeStagingRepository")]
-	tasks.findByName("uploadArchives").dependsOn(uploadArchivesDeps) 
+    def uploadArchivesDeps = [tasks.findByName("publishToSonatype"), tasks.findByName("closeSonatypeStagingRepository")]
+    tasks.findByName("uploadArchives").dependsOn(uploadArchivesDeps)
 }
 
 signing {
-    required { gradle.taskGraph.hasTask("uploadArchives") }
     useGpgCmd()
     sign publishing.publications
+}
+
+tasks.withType(Sign) {
+    onlyIf("upload is required") { gradle.taskGraph.hasTask("uploadArchives") }
 }
 
 
