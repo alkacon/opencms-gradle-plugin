@@ -451,7 +451,7 @@ class OpenCmsModulesPlugin implements Plugin<Project> {
                     ext.requiresTest = requiresTest
                     destinationDirectory = p.modulesDistsDir
                     archiveBaseName = moduleName
-                    doFirst {
+                    doLast {
                         println HORIZONTAL_LINE
                         println "Building ZIP for $moduleName version $moduleVersion"
                         println HORIZONTAL_LINE
