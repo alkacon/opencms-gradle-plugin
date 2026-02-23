@@ -77,7 +77,7 @@ class OpenCmsModulesPlugin implements Plugin<Project> {
         // configure Java compatibility
         def javaExtension = p.extensions.getByType(JavaPluginExtension)
         def targetVer = p.findProperty('java_target_version') ?: DEFAULT_JAVA_COMPATIBILITY
-        def sourceVer = p.findProperty('java_source_version') ?: DEFAULT_JAVA_COMPATIBILITY
+        def sourceVer = p.findProperty('java_source_version')
         javaExtension.targetCompatibility = JavaVersion.toVersion(targetVer)
         javaExtension.sourceCompatibility = JavaVersion.toVersion(sourceVer ?: targetVer)
 
@@ -104,8 +104,8 @@ class OpenCmsModulesPlugin implements Plugin<Project> {
                 }
             }
             mavenCentral()
-            maven { 
-               url "https://maven.restlet.talend.com" 
+            maven {
+               url "https://maven.restlet.talend.com"
             }
            maven {
                 url "https://maven.vaadin.com/vaadin-addons"
@@ -590,7 +590,7 @@ class OpenCmsModulesPlugin implements Plugin<Project> {
                     println 'Done'
                 }
             }
-            
+
             p.afterEvaluate {
                 def startTaskNames = p.gradle.startParameter.taskNames
                 if (startTaskNames.contains("bindist") || startTaskNames.contains(":bindist")) {
@@ -744,7 +744,7 @@ class OpenCmsModulesPlugin implements Plugin<Project> {
                                     url = 'http://www.alkacon.com'
                                 }
                             }
-                            withXml { xml -> 
+                            withXml { xml ->
                                 def depsNode = xml.asNode().appendNode("dependencies")
                                 def depsWithScopes = [
                                     [p.configurations.implementation.dependencies, "compile"],
@@ -767,7 +767,7 @@ class OpenCmsModulesPlugin implements Plugin<Project> {
                                                 exclusionNode.appendNode('groupId', '*')
                                             }
                                         }
-                                        
+
                                     }
                                 }
                             }
