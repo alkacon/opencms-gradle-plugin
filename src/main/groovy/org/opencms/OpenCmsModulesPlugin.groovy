@@ -241,6 +241,24 @@ class OpenCmsModulesPlugin implements Plugin<Project> {
             p.ext.moduleLibs=''
             p.ext.dependencyLibs=''
             p.ext.modulesAll=''
+            p.gradle.taskGraph.whenReady { taskGraph ->
+                def activeDistTasks = taskGraph.allTasks.findAll { it.name.startsWith("dist_") }
+                p.ext.modulesAll = activeDistTasks.collect { task ->
+                    task.archiveFileName.get()
+                }.join(',')
+                def activeJarTasks = taskGraph.allTasks.findAll { it.name.startsWith("jar_") }
+                p.ext.moduleLibs = activeJarTasks.collect { task ->
+                    task.archiveFileName.get()
+                }.join(',')
+                def activeCopyDepsTasks = taskGraph.allTasks.findAll { it.name.startsWith("copyDeps_") }
+                def allLibs = []
+                activeCopyDepsTasks.each { task ->
+                    task.getInputs().getSourceFiles().each { file ->
+                        allLibs << file.name
+                    }
+                }
+                p.ext.dependencyLibs = allLibs.unique().join(',')
+            }
 
             if (!p.hasProperty('max_heap_size')){
                 p.ext.max_heap_size=DEFAULT_MAX_HEAPSIZE
@@ -274,10 +292,6 @@ class OpenCmsModulesPlugin implements Plugin<Project> {
                     from currentModuleDeps
                     into p.layout.buildDirectory.dir("deps")
                     duplicatesStrategy = 'exclude'
-                    doFirst {
-                        def fileNames = currentModuleDeps.collect { it.name }.join(',')
-                        p.ext.dependencyLibs += fileNames + ','
-                    }
                 }
                 def moduleCompileClasspath = p.configurations.maybeCreate("${moduleName}CompileClasspath").with {
                     canBeResolved = true
@@ -359,7 +373,6 @@ class OpenCmsModulesPlugin implements Plugin<Project> {
                             println HORIZONTAL_LINE
                             println "Building JAR for $moduleName version $moduleVersion"
                             println HORIZONTAL_LINE
-                            p.moduleLibs+="${moduleName}.jar,"
                         }
                     }
                 }
@@ -379,7 +392,6 @@ class OpenCmsModulesPlugin implements Plugin<Project> {
                     p.tasks.register("test_${moduleName}", Test) {
                         group = 'OpenCms'
                         description = "Runs isolated unit tests for module ${moduleName} using JUnit."
-                        //dependsOn p.sourceSets.test.compileJavaTaskName
                         useJUnit()
                         def testSourceSet = p.sourceSets."test_${moduleName}"
                         testClassesDirs = testSourceSet.output.classesDirs
@@ -388,13 +400,10 @@ class OpenCmsModulesPlugin implements Plugin<Project> {
                             html.outputLocation.set(p.layout.buildDirectory.dir("reports/tests/${moduleName}"))
                             junitXml.outputLocation.set(p.layout.buildDirectory.dir("test-results/${moduleName}"))
                         }
-                        //def dc = p.sourceSets.test.compileClasspath
-                        //classpath = dc + p.files(p.sourceSets.test.java.classesDirectory)
                         include "**/Test*"
                         // important: exclude all anonymous classes
                         exclude '**/*$*.class'
                         scanForTestClasses false
-                        //testClassesDirs = p.files(p.sourceSets.test.java.classesDirectory)
                         systemProperties['db.product'] = "hsqldb"
                         systemProperties['test.data.path'] = "${p.projectDir}/test/data"
                         systemProperties['test.webapp.path'] = "${p.projectDir}/test/webapp"
@@ -451,17 +460,15 @@ class OpenCmsModulesPlugin implements Plugin<Project> {
                     ext.requiresTest = requiresTest
                     destinationDirectory = p.modulesDistsDir
                     archiveBaseName = moduleName
+                    if (p.hasProperty('noVersion')) {
+                        archiveVersion = null
+                    } else {
+                        archiveVersion = moduleVersion
+                    }
                     doLast {
                         println HORIZONTAL_LINE
                         println "Building ZIP for $moduleName version $moduleVersion"
                         println HORIZONTAL_LINE
-                        if (p.hasProperty('noVersion')) {
-                            archiveVersion = null
-                            p.modulesAll +="${moduleName}.zip,"
-                        } else {
-                            archiveVersion = moduleVersion
-                            p.modulesAll +="${moduleName}-${moduleVersion}.zip,"
-                        }
                     }
                     // excluding jars from modules, jars will be placed in the WEB-INF lib folder through the deployment process
                     from("${moduleFolder}/resources"){
@@ -573,6 +580,7 @@ class OpenCmsModulesPlugin implements Plugin<Project> {
                     }
                 }
                 into p.modulesDistsDir
+                outputs.upToDateWhen { false }
             }
 
             p.tasks.register('bindist') {
