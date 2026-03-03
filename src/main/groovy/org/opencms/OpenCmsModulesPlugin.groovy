@@ -563,10 +563,6 @@ class OpenCmsModulesPlugin implements Plugin<Project> {
             p.tasks.register('copyDeps', Copy){
                 from p.configurations.moduleDeps
                 into "${p.buildDir}/deps"
-                doFirst {
-                    def fileNames = p.configurations.moduleDeps.collect { it.name }.join(',')
-                    p.ext.dependencyLibs += fileNames + ','
-                }
             }
 
             p.tasks.register('copyProjectProps', Copy) {
