@@ -46,7 +46,7 @@ class OpenCmsModulesPlugin implements Plugin<Project> {
     private static final String GRADLE_VERSION = '8.10.2'
 
     /** Default Java compatibility. */
-    private static final String DEFAULT_JAVA_COMPATIBILITY = '11'
+    private static final String DEFAULT_JAVA_COMPATIBILITY = '21'
 
     /** Name of the OpenCms dependencies extension. */
     private static final String PROJECT_EXTENSION = "ocDependencies"
@@ -243,9 +243,11 @@ class OpenCmsModulesPlugin implements Plugin<Project> {
             p.ext.modulesAll=''
             p.gradle.taskGraph.whenReady { taskGraph ->
                 def activeDistTasks = taskGraph.allTasks.findAll { it.name.startsWith("dist_") }
-                p.ext.modulesAll = activeDistTasks.collect { task ->
-                    task.archiveFileName.get()
-                }.join(',')
+                p.ext.modulesAll = activeDistTasks
+                    .findAll { it.ext.manifestFileExists }
+                    .collect { task ->
+                        task.ext.manifestFileExists ? task.archiveFileName.get() : null
+                    }.join(',')
                 def activeJarTasks = taskGraph.allTasks.findAll { it.name.startsWith("jar_") }
                 p.ext.moduleLibs = activeJarTasks.collect { task ->
                     task.archiveFileName.get()
@@ -445,7 +447,7 @@ class OpenCmsModulesPlugin implements Plugin<Project> {
                     }
                 }
 
-                p.tasks.register("dist_$moduleName", Zip){
+                p.tasks.register("dist_$moduleName", Zip) {
                     group = 'OpenCms'
                     description = "Builds the binary distribution for module '${moduleName}'."
                     if (requiresJar.toBoolean()) {
@@ -458,6 +460,7 @@ class OpenCmsModulesPlugin implements Plugin<Project> {
                     ext.gwtRenameTo = gwtRename
                     ext.requiresJar = requiresJar
                     ext.requiresTest = requiresTest
+                    ext.manifestFileExists = manifestFile.exists()
                     destinationDirectory = p.modulesDistsDir
                     archiveBaseName = moduleName
                     if (p.hasProperty('noVersion')) {
