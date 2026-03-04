@@ -63,10 +63,13 @@ signing {
     sign publishing.publications
 }
 
-tasks.withType(Sign) {
-    onlyIf("upload is required") { gradle.taskGraph.hasTask("uploadArchives") }
+gradle.taskGraph.whenReady { taskGraph ->
+    tasks.withType(Sign) {
+        onlyIf {
+            taskGraph.hasTask(":uploadArchives") 
+        }
+    }
 }
-
 
 artifacts {
     archives jar
