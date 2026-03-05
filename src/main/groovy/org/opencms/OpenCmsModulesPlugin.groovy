@@ -242,17 +242,17 @@ class OpenCmsModulesPlugin implements Plugin<Project> {
             p.ext.dependencyLibs=''
             p.ext.modulesAll=''
             p.gradle.taskGraph.whenReady { taskGraph ->
-                def activeDistTasks = taskGraph.allTasks.findAll { it.name.startsWith("dist_") }
+                def activeDistTasks = taskGraph.allTasks.findAll { it.name.startsWith("dist_") && it.project == p }
                 p.ext.modulesAll = activeDistTasks
                     .findAll { it.ext.manifestFileExists }
                     .collect { task ->
                         task.ext.manifestFileExists ? task.archiveFileName.get() : null
                     }.join(',')
-                def activeJarTasks = taskGraph.allTasks.findAll { it.name.startsWith("jar_") }
+                def activeJarTasks = taskGraph.allTasks.findAll { it.name.startsWith("jar_") && it.project == p }
                 p.ext.moduleLibs = activeJarTasks.collect { task ->
                     task.archiveFileName.get()
                 }.join(',')
-                def activeCopyDepsTasks = taskGraph.allTasks.findAll { it.name.startsWith("copyDeps_") }
+                def activeCopyDepsTasks = taskGraph.allTasks.findAll { it.name.startsWith("copyDeps_") && it.project == p }
                 def allLibs = []
                 activeCopyDepsTasks.each { task ->
                     task.getInputs().getSourceFiles().each { file ->
