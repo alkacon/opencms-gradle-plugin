@@ -25,12 +25,14 @@ repositories {
     mavenCentral()
 }
 
-sourceCompatibility='1.8'
-targetCompatibility='1.8'
+java {
+    sourceCompatibility = JavaVersion.VERSION_1_8
+    targetCompatibility = JavaVersion.VERSION_1_8
+}
 
 task javadocJar(type: Jar, dependsOn: groovydoc) {
     archiveClassifier = 'javadoc'
-    from "${buildDir}/docs/groovydoc"
+    from layout.buildDirectory.dir("docs/groovydoc")
 }
 
 task sourcesJar(type: Jar) {
@@ -39,7 +41,7 @@ task sourcesJar(type: Jar) {
 }
 
 task setGradleVersion(type: Wrapper) {
-    gradleVersion = '7.5.1'
+    gradleVersion = '9.4.1'
 }
 
 task install(dependsOn: publishToMavenLocal) {
@@ -71,11 +73,9 @@ gradle.taskGraph.whenReady { taskGraph ->
     }
 }
 
-artifacts {
-    archives jar
-    archives javadocJar
-    archives sourcesJar
-
+tasks.named('assemble') {
+    dependsOn javadocJar
+    dependsOn sourcesJar
 }
 
 
@@ -117,7 +117,4 @@ publishing {
         }
     }
 }
-
-
-
 

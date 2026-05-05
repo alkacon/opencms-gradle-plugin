@@ -43,7 +43,7 @@ import org.gradle.api.artifacts.ExternalModuleDependency
 class OpenCmsModulesPlugin implements Plugin<Project> {
 
     /** Default Gradle version. */
-    private static final String GRADLE_VERSION = '8.10.2'
+    private static final String GRADLE_VERSION = '9.4.1'
 
     /** Default Java compatibility. */
     private static final String DEFAULT_JAVA_COMPATIBILITY = '21'
@@ -84,6 +84,7 @@ class OpenCmsModulesPlugin implements Plugin<Project> {
         // configure module dependencies
         def moduleDeps = p.configurations.maybeCreate('moduleDeps').with {
             description = 'additional dependencies required by modules'
+            canBeConsumed = false
             it
         }
         p.configurations.named('implementation').configure {
@@ -96,19 +97,19 @@ class OpenCmsModulesPlugin implements Plugin<Project> {
         // configure repositories
         p.repositories {
             mavenLocal()
-            if (p.hasProperty('additional_repositories')){
-                p.additional_repositories.split(';').each{ repo ->
+            if (p.hasProperty('additional_repositories') && p.additional_repositories?.trim()){
+                p.additional_repositories.split(';').findAll { it.trim() }.each{ repo ->
                     maven {
-                        url repo
+                        url = p.uri(repo)
                     }
                 }
             }
             mavenCentral()
             maven {
-               url "https://maven.restlet.talend.com"
+               url = p.uri("https://maven.restlet.talend.com")
             }
            maven {
-                url "https://maven.vaadin.com/vaadin-addons"
+                url = p.uri("https://maven.vaadin.com/vaadin-addons")
             }
         }
 
@@ -237,7 +238,10 @@ class OpenCmsModulesPlugin implements Plugin<Project> {
         }
 
         try {
-            p.ext.modulesDistsDir = p.file("${p.buildDir}/modulesZip")
+            p.ext.modulesDistsDir = p.layout.buildDirectory.dir("modulesZip").get().asFile
+            def modulesAllValue = new java.util.concurrent.atomic.AtomicReference('')
+            def moduleLibsValue = new java.util.concurrent.atomic.AtomicReference('')
+            def dependencyLibsValue = new java.util.concurrent.atomic.AtomicReference('')
             p.ext.moduleLibs=''
             p.ext.dependencyLibs=''
             p.ext.modulesAll=''
@@ -248,10 +252,12 @@ class OpenCmsModulesPlugin implements Plugin<Project> {
                     .collect { task ->
                         task.ext.manifestFileExists ? task.archiveFileName.get() : null
                     }.join(',')
+                modulesAllValue.set(p.ext.modulesAll)
                 def activeJarTasks = taskGraph.allTasks.findAll { it.name.startsWith("jar_") && it.project == p }
                 p.ext.moduleLibs = activeJarTasks.collect { task ->
                     task.archiveFileName.get()
                 }.join(',')
+                moduleLibsValue.set(p.ext.moduleLibs)
                 def activeCopyDepsTasks = taskGraph.allTasks.findAll { it.name.startsWith("copyDeps_") && it.project == p }
                 def allLibs = []
                 activeCopyDepsTasks.each { task ->
@@ -260,6 +266,7 @@ class OpenCmsModulesPlugin implements Plugin<Project> {
                     }
                 }
                 p.ext.dependencyLibs = allLibs.unique().join(',')
+                dependencyLibsValue.set(p.ext.dependencyLibs)
             }
 
             if (!p.hasProperty('max_heap_size')){
@@ -274,7 +281,7 @@ class OpenCmsModulesPlugin implements Plugin<Project> {
                 folder.mkdirs()
             }
             p.ext.copyModuleTestExists = p.file(p.copy_module_test).isDirectory()
-            p.ext.modulesDistsDir = p.file("${p.buildDir}/modulesZip")
+            p.ext.modulesDistsDir = p.layout.buildDirectory.dir("modulesZip").get().asFile
 
             // iterate all configured modules
             p.allModuleNames.each { moduleName ->
@@ -287,6 +294,7 @@ class OpenCmsModulesPlugin implements Plugin<Project> {
                 });
                 def currentModuleDeps = p.configurations.maybeCreate("moduleDeps_${moduleName}").with {
                     description = "Dependencies for module ${moduleName}"
+                    canBeConsumed = false
                     extendsFrom p.configurations.moduleDeps
                     it
                 }
@@ -296,6 +304,7 @@ class OpenCmsModulesPlugin implements Plugin<Project> {
                     duplicatesStrategy = 'exclude'
                 }
                 def moduleCompileClasspath = p.configurations.maybeCreate("${moduleName}CompileClasspath").with {
+                    canBeConsumed = false
                     canBeResolved = true
                     extendsFrom moduleDeps
                     extendsFrom currentModuleDeps
@@ -324,7 +333,7 @@ class OpenCmsModulesPlugin implements Plugin<Project> {
                         gwtModule = moduleProperties['module.gwt']
                         gwtSourceSetName = moduleName.replace(".", "_")+'_gwt'
                         p.logger.lifecycle("found GWT module $gwtModule")
-                        def moduleXml = (new XmlParser()).parse(srcGwtDir.toString()+"/" +gwtModule.replaceAll('\\.','/')+'.gwt.xml')
+                        def moduleXml = parseXml(srcGwtDir.toString()+"/" +gwtModule.replaceAll('\\.','/')+'.gwt.xml')
                         gwtRename = moduleXml['@rename-to']
                         if (gwtRename==null){
                             gwtRename=gwtModule
@@ -343,7 +352,7 @@ class OpenCmsModulesPlugin implements Plugin<Project> {
                 def moduleDependencies=[]
                 def moduleVersion = p.version
                 if (manifestFile.exists()){
-                    def parsedManifest= (new XmlParser()).parse("${moduleFolder}/resources/manifest.xml")
+                    def parsedManifest= parseXml("${moduleFolder}/resources/manifest.xml")
                     parsedManifest.module[0].dependencies[0].dependency.each{ dep ->
                         moduleDependencies.add(dep.@name)
                     }
@@ -362,7 +371,7 @@ class OpenCmsModulesPlugin implements Plugin<Project> {
                         from ("$moduleFolder") { include "META-INF/**" }
                         from ("$staticFolder") { into "OPENCMS" }
                         if (gwtModule != null){
-                            from( "${p.buildDir}/gwt/${moduleName}") {
+                            from(p.layout.buildDirectory.dir("gwt/${moduleName}")) {
                                 exclude '**/WEB-INF/**'
                                 into "OPENCMS/gwt"
                             }
@@ -405,42 +414,55 @@ class OpenCmsModulesPlugin implements Plugin<Project> {
                         include "**/Test*"
                         // important: exclude all anonymous classes
                         exclude '**/*$*.class'
-                        scanForTestClasses false
+                        scanForTestClasses = false
                         systemProperties['db.product'] = "hsqldb"
                         systemProperties['test.data.path'] = "${p.projectDir}/test/data"
                         systemProperties['test.webapp.path'] = "${p.projectDir}/test/webapp"
                         systemProperties['test.build.folder'] = p.sourceSets.test.output.resourcesDir
                         maxHeapSize = p.max_heap_size
                         testLogging.showStandardStreams = true
-                        ignoreFailures true
+                        ignoreFailures = true
                     }
                 }
                 if (installForTests) {
                     if (p.copyModuleTestExists) {
+                        def installForTestTask
+                        def modulesDistsDir = p.modulesDistsDir
+                        def copyModuleTest = p.copy_module_test
                         if (p.hasProperty('noVersion')) {
-                            p.tasks.register("installForTest_${moduleName}", Copy) {
-                                from "${p.modulesDistsDir}/${moduleName}.zip"
-                                into p.copy_module_test
+                            def installSource = "${modulesDistsDir}/${moduleName}.zip"
+                            def installMessage = "copying ${installSource} to ${copyModuleTest}"
+                            installForTestTask = p.tasks.register("installForTest_${moduleName}", Copy) {
+                                from installSource
+                                into copyModuleTest
                                 doFirst {
-                                    println "copying ${p.modulesDistsDir}/${moduleName}.zip to ${p.copy_module_test}"
+                                    println installMessage
                                 }
                                 ext.moduleName="${moduleName}"
                             }
                         } else {
-                            p.task("installForTest_${moduleName}", Copy) {
-                                from "${p.modulesDistsDir}/${moduleName}-${moduleVersion}.zip"
-                                into p.copy_module_test
+                            def installSource = "${modulesDistsDir}/${moduleName}-${moduleVersion}.zip"
+                            def installMessage = "copying ${installSource} to ${copyModuleTest}/${moduleName}.zip"
+                            installForTestTask = p.tasks.register("installForTest_${moduleName}", Copy) {
+                                from installSource
+                                into copyModuleTest
                                 rename("${moduleName}-${moduleVersion}.zip","${moduleName}.zip")
                                 doFirst {
-                                    println "copying ${p.modulesDistsDir}/${moduleName}-${moduleVersion}.zip to ${p.copy_module_test}/${moduleName}.zip"
+                                    println installMessage
                                 }
                                 ext.moduleName="${moduleName}"
                             }
                         }
-                        p.tasks["installForTest_$moduleName"].dependsOn("dist_$moduleName")
-                        p.tasks["test"].dependsOn("installForTest_$moduleName")
+                        installForTestTask.configure {
+                            dependsOn("dist_$moduleName")
+                        }
+                        p.tasks.named("test").configure {
+                            dependsOn(installForTestTask)
+                        }
                         if (requiresTest.toBoolean()) {
-                            p.tasks["test_$moduleName"].dependsOn("installForTest_$moduleName")
+                            p.tasks.named("test_$moduleName").configure {
+                                dependsOn(installForTestTask)
+                            }
                         }
                     } else {
                         println "WARN: Installing module $moduleName for testcases will not work. The property 'copy_module_test' is not set correctly."
@@ -489,6 +511,8 @@ class OpenCmsModulesPlugin implements Plugin<Project> {
 
                 if (gwtModule != null){
                     p.logger.lifecycle("creating sourceset for $gwtModule")
+                    def gwtBuildDir = p.layout.buildDirectory.dir("gwt/${moduleName}").get().asFile
+                    def gwtExtraDir = p.layout.buildDirectory.dir("extra/${moduleName}").get().asFile
 
                     p.sourceSets.create(gwtSourceSetName,{
                         java {
@@ -501,16 +525,16 @@ class OpenCmsModulesPlugin implements Plugin<Project> {
                         }
                     })
                     p.sourceSets[gwtSourceSetName].compileClasspath=p.configurations.compileClasspath
-                    p.tasks.register("gwt_$moduleName", JavaExec) {
+                    def gwtTask = p.tasks.register("gwt_$moduleName", JavaExec) {
                         group = 'OpenCms'
                         description = "Compiles the GWT module ${moduleName} into browser-executable JavaScript."
                         dependsOn "${gwtSourceSetName}Classes"
-                        ext.buildDir =  p.buildDir.toString()  +"/gwt/$moduleName"
-                        ext.extraDir =  p.buildDir.toString() + "/extra/$moduleName"
+                        ext.buildDir = gwtBuildDir.toString()
+                        ext.extraDir = gwtExtraDir.toString()
                         ext.moduleName = moduleName
                         inputs.files p.sourceSets[gwtSourceSetName].java.srcDirs
                         inputs.dir p.sourceSets[gwtSourceSetName].output.resourcesDir
-                        outputs.dir buildDir
+                        outputs.dir gwtBuildDir
 
                         // Workaround for incremental build (GRADLE-1483)
                         outputs.upToDateSpec = new org.gradle.api.specs.AndSpec()
@@ -520,9 +544,9 @@ class OpenCmsModulesPlugin implements Plugin<Project> {
                             println "Building GWT resources for $gwtModule"
                             println HORIZONTAL_LINE
                             // to clean the output directory, delete it first
-                            def dir = p.file(buildDir)
+                            def dir = gwtBuildDir
                             if (dir.exists()){
-                                p.delete(dir)
+                                dir.deleteDir()
                             }
                             dir.mkdirs()
                         }
@@ -544,7 +568,7 @@ class OpenCmsModulesPlugin implements Plugin<Project> {
                             gwtModule,
                             // Your GWT module
                             '-war',
-                            buildDir,
+                            gwtBuildDir.toString(),
                             '-logLevel',
                             'ERROR',
                             '-localWorkers',
@@ -552,20 +576,22 @@ class OpenCmsModulesPlugin implements Plugin<Project> {
                             '-style',
                             p.gwtStyle,
                             '-extra',
-                            extraDir,
+                            gwtExtraDir.toString(),
                             "-${p.gwtMode}"
                         ]
 
                         maxHeapSize = p.max_heap_size
                     }
 
-                    p.tasks["jar_$moduleName"].dependsOn p.tasks["gwt_$moduleName"]
+                    p.tasks.named("jar_$moduleName").configure {
+                        dependsOn(gwtTask)
+                    }
                 }
             }
 
             p.tasks.register('copyDeps', Copy){
                 from p.configurations.moduleDeps
-                into "${p.buildDir}/deps"
+                into p.layout.buildDirectory.dir("deps")
             }
 
             p.tasks.register('copyProjectProps', Copy) {
@@ -573,9 +599,9 @@ class OpenCmsModulesPlugin implements Plugin<Project> {
                 from(p.projectDir) {
                     include 'project.properties'
                     filter { String line ->
-                        line.replace('@MODULES_ALL@', p.findProperty('modulesAll')?.toString() ?: '')
-                            .replace('@MODULE_LIBS@', p.findProperty('moduleLibs')?.toString() ?: '')
-                            .replace('@DEPENDENCY_LIBS@', p.findProperty('dependencyLibs')?.toString() ?: '')
+                        line.replace('@MODULES_ALL@', modulesAllValue.get())
+                            .replace('@MODULE_LIBS@', moduleLibsValue.get())
+                            .replace('@DEPENDENCY_LIBS@', dependencyLibsValue.get())
                     }
                 }
                 into p.modulesDistsDir
@@ -606,7 +632,7 @@ class OpenCmsModulesPlugin implements Plugin<Project> {
                     }
                 } else {
                     // this only runs once even for ./gradlew dist_org.opencms.module1 dist_org.opencms.module2
-                    p.tasks.matching { it.name.startsWith("dist_") }.all { distTask ->
+                    p.tasks.matching { it.name.startsWith("dist_") }.configureEach { distTask ->
                         distTask.finalizedBy 'copyProjectProps'
                     }
                 }
@@ -615,6 +641,7 @@ class OpenCmsModulesPlugin implements Plugin<Project> {
             p.tasks.register('projectAllJar', Jar) {
                 group = 'OpenCms'
                 description = 'Instead of creating one JAR for each module, builds one JAR for all modules.'
+                def projectNiceName = p.project_nice_name
                 p.allModuleNames.each{ moduleName ->
                     from p.sourceSets[moduleName].output
                 }
@@ -623,10 +650,10 @@ class OpenCmsModulesPlugin implements Plugin<Project> {
                 exclude '**/test/**'
                 doFirst {
                     println HORIZONTAL_LINE
-                    println "Building JAR for ${p.project_nice_name} ALL"
+                    println "Building JAR for ${projectNiceName} ALL"
                     println HORIZONTAL_LINE
                 }
-                duplicatesStrategy 'exclude'
+                duplicatesStrategy = 'exclude'
             }
 
             p.tasks.register('projectAllJavadoc', Javadoc) {
@@ -636,7 +663,7 @@ class OpenCmsModulesPlugin implements Plugin<Project> {
                     source += p.sourceSets[moduleName].allJava
                     classpath += p.sourceSets[moduleName].compileClasspath
                 }
-                destinationDir = p.file("${p.buildDir}/docs/projectAllJavadoc")
+                destinationDir = p.layout.buildDirectory.dir("docs/projectAllJavadoc").get().asFile
                 options.addStringOption('sourcepath', '')
             }
 
@@ -645,7 +672,7 @@ class OpenCmsModulesPlugin implements Plugin<Project> {
                 description = 'Aggregates Javadoc from all modules into a single, combined JAR archive.'
                 dependsOn 'projectAllJavadoc'
                 archiveClassifier = 'javadoc'
-                from "${p.buildDir}/docs/projectAllJavadoc"
+                from p.layout.buildDirectory.dir("docs/projectAllJavadoc")
                 archiveBaseName = "${p.project_name}"
             }
 
@@ -657,42 +684,50 @@ class OpenCmsModulesPlugin implements Plugin<Project> {
                 }
                 archiveClassifier = 'sources'
                 archiveBaseName = "${p.project_name}"
-                duplicatesStrategy 'exclude'
+                duplicatesStrategy = 'exclude'
             }
 
             p.tasks.register('install') {
                 group = 'OpenCms'
                 description = 'Publishes the project artifacts for all modules to the local Maven repository.'
                 dependsOn 'publishToMavenLocal'
+                def buildVersion = p.build_version
                 doFirst {
-                    println("Installing artifacts for version ${p.build_version}")
+                    println("Installing artifacts for version ${buildVersion}")
                 }
             }
 
-            p.tasks.findAll{ task -> task.name.startsWith('dist_')}.each { dist_task ->
+            p.tasks.matching { task -> task.name.startsWith('dist_') }.all { dist_task ->
                 dist_task.dependencies.each { dep ->
-                    def depCompileName = 'compile'+dep.replaceAll('\\.','')+'java'
-                    p.tasks.findAll{ comp_task -> comp_task.name.toLowerCase().equals(depCompileName)}.each {comp_task ->
-                        p.sourceSets[dist_task.moduleName].compileClasspath += p.files(p.sourceSets[dep].java.classesDirectory) { builtBy comp_task.name }
+                    def depSourceSet = p.sourceSets.findByName(dep)
+                    if (depSourceSet != null) {
+                        def depCompileTask = p.tasks.named(depSourceSet.compileJavaTaskName)
+                        def depClasses = p.files(depSourceSet.java.classesDirectory) { builtBy depCompileTask }
+                        p.sourceSets[dist_task.moduleName].compileClasspath += depClasses
                         if (dist_task.gwtSourceSetName!=null){
-                            p.sourceSets["${dist_task.gwtSourceSetName}"].compileClasspath += p.files(p.sourceSets[dep].java.classesDirectory) { builtBy comp_task.name }
+                            p.sourceSets["${dist_task.gwtSourceSetName}"].compileClasspath += depClasses
                         }
                         if (dist_task.requiresTest.toBoolean()){
-                            p.sourceSets.test.compileClasspath += p.files(p.sourceSets[dep].java.classesDirectory) { builtBy comp_task.name }
-                            p.sourceSets.test.runtimeClasspath += p.files(p.sourceSets[dep].java.classesDirectory) { builtBy comp_task.name }
-                            if (p.tasks.findByName("installForTest_${dep}")) {
-                                tasks["test_${dist_task.moduleName}"].dependsOn("installForTest_${dep}")
+                            p.sourceSets.test.compileClasspath += depClasses
+                            p.sourceSets.test.runtimeClasspath += depClasses
+                            def installTaskName = "installForTest_${dep}"
+                            if (p.tasks.names.contains(installTaskName)) {
+                                p.tasks.named("test_${dist_task.moduleName}").configure {
+                                    dependsOn(p.tasks.named(installTaskName))
+                                }
                             }
                         }
                     }
                 }
                 if (dist_task.requiresJar.toBoolean()) {
-                    p.tasks['jar_'+dist_task.moduleName].dependsOn {
-                        p.tasks.findAll{ comp_task -> comp_task.name.toLowerCase().equals('compile'+dist_task.moduleName.replaceAll('\\.','')+'java')}
+                    def moduleCompileTask = p.tasks.named(p.sourceSets[dist_task.moduleName].compileJavaTaskName)
+                    p.tasks.named('jar_'+dist_task.moduleName).configure {
+                        dependsOn(moduleCompileTask)
                     }
                 }
-                p.projectAllJar.dependsOn {
-                    p.tasks.findAll{ comp_task -> comp_task.name.toLowerCase().equals('compile'+dist_task.moduleName.replaceAll('\\.','')+'java')}
+                def moduleCompileTask = p.tasks.named(p.sourceSets[dist_task.moduleName].compileJavaTaskName)
+                p.tasks.named('projectAllJar').configure {
+                    dependsOn(moduleCompileTask)
                 }
             }
 
@@ -710,10 +745,10 @@ class OpenCmsModulesPlugin implements Plugin<Project> {
                 }
             }
 
-            p.artifacts {
-                archives p.projectAllJar
-                archives p.projectAllSourcesJar
-                archives p.projectAllJavadocJar
+            p.tasks.named('assemble') {
+                dependsOn p.projectAllJar
+                dependsOn p.projectAllSourcesJar
+                dependsOn p.projectAllJavadocJar
             }
 
             p.publishing {
@@ -730,7 +765,7 @@ class OpenCmsModulesPlugin implements Plugin<Project> {
                         pom {
                             name = "${p.project_nice_name} all"
                             description = "${p.project_nice_name} all modules"
-                            packaging 'jar'
+                            packaging = 'jar'
                             groupId = 'com.alkacon'
                             url = 'http://www.alkacon.com'
                             version = p.build_version
@@ -786,10 +821,12 @@ class OpenCmsModulesPlugin implements Plugin<Project> {
             if (p.copyModuleTestExists) {
                 p.tasks.register('deleteInstallForTestCopies', Delete) {
                     delete (p.fileTree(dir: p.copy_module_test).matching {
-                        p.tasks.findAll{ task -> task.name.startsWith('installForTest_')}.each { install_task -> include "${install_task.moduleName}.zip" }
+                        p.tasks.matching { task -> task.name.startsWith('installForTest_') }.configureEach { install_task -> include "${install_task.moduleName}.zip" }
                     })
                 }
-                p.tasks["clean"].dependsOn("deleteInstallForTestCopies")
+                p.tasks.named("clean").configure {
+                    dependsOn("deleteInstallForTestCopies")
+                }
             }
 
             p.tasks.register('setGradleVersion', Wrapper) {
@@ -803,5 +840,21 @@ class OpenCmsModulesPlugin implements Plugin<Project> {
         } catch(Exception e) {
             p.logger.error("${HORIZONTAL_LINE}\nFailed to configure OpenCms modules project:\n\n${e.message} \n\nUse the opencmsPluginDescription task to view plugin description.\n${HORIZONTAL_LINE}\n\n",e)
         }
+    }
+
+    /**
+     * Parses XML across the Groovy 3 and Groovy 4 package move.
+     * @param source the file path or file to parse
+     * @return the parsed XML node
+     */
+    private static Object parseXml(Object source) {
+
+        Class parserClass
+        try {
+            parserClass = Class.forName('groovy.xml.XmlParser')
+        } catch (ClassNotFoundException e) {
+            parserClass = Class.forName('groovy.util.XmlParser')
+        }
+        return parserClass.getDeclaredConstructor().newInstance().parse(source)
     }
 }
