@@ -20,6 +20,7 @@ import org.gradle.api.plugins.JavaPluginExtension
 import org.gradle.api.publish.tasks.GenerateModuleMetadata
 import org.gradle.api.publish.maven.MavenPublication
 import org.gradle.api.artifacts.ExternalModuleDependency
+import org.gradle.api.logging.LogLevel
 
 /**
  * This Gradle plugin should be used to build modules for OpenCms.<p>
@@ -118,15 +119,15 @@ class OpenCmsModulesPlugin implements Plugin<Project> {
             def opencmsVersion = p.findProperty('opencms_version') ?: 'master'
             def OpenCmsModulesExtension ocDependencies = p.extensions.findByName("ocDependencies")
             if (ocDependencies != null) {
-                println "You are using default OpenCms dependencies with the following configuration:"
-                println ""
-                ocDependencies.printState()
+                p.logger.lifecycle("You are using default OpenCms dependencies with the following configuration:")
+                p.logger.lifecycle("")
+                ocDependencies.printState(p.logger)
                 if (ocDependencies.inModuleDeps.get()) {
-                    println "Adding jars placed in some lib* folder to the moduleDeps:"
-                    println " - moduleDeps p.fileTree(dir: '.').matching {"
-                    println "     include '**/lib*/*.jar'"
-                    println "     exclude 'build/*"
-                    println "   }"
+                    p.logger.lifecycle("Adding jars placed in some lib* folder to the moduleDeps:")
+                    p.logger.lifecycle(" - moduleDeps p.fileTree(dir: '.').matching {")
+                    p.logger.lifecycle("     include '**/lib*/*.jar'")
+                    p.logger.lifecycle("     exclude 'build/*")
+                    p.logger.lifecycle("   }")
                     p.dependencies.add("moduleDeps", p.fileTree(dir: '.').matching {
                         include '**/lib*/*.jar'
                         exclude 'build/*'
@@ -134,21 +135,21 @@ class OpenCmsModulesPlugin implements Plugin<Project> {
                 }
                 List<String> compileDependencies = ocDependencies.compile.getDependencies(opencmsVersion)
                 if (compileDependencies.isEmpty()) {
-                    println "No default compile dependencies are added."
+                    p.logger.lifecycle("No default compile dependencies are added.")
                 } else {
-                    println "Adding default compile dependencies:"
+                    p.logger.lifecycle("Adding default compile dependencies:")
                     for(String dependency : compileDependencies) {
-                        println " - compile ${dependency}"
+                        p.logger.lifecycle(" - compile ${dependency}")
                         p.dependencies.add("implementation", dependency)
                     }
                 }
                 List<String> testCompileDependencies = ocDependencies.testCompile.getDependencies(opencmsVersion)
                 if (testCompileDependencies.isEmpty()) {
-                    println "No default testCompile dependencies are added."
+                    p.logger.lifecycle("No default testCompile dependencies are added.")
                 } else {
-                    println "Adding default testCompile dependencies:"
+                    p.logger.lifecycle("Adding default testCompile dependencies:")
                     for(String dependency : testCompileDependencies) {
-                        println " - testCompile ${dependency}"
+                        p.logger.lifecycle(" - testCompile ${dependency}")
                         p.dependencies.add("testImplementation", dependency)
                     }
                 }
@@ -165,21 +166,21 @@ class OpenCmsModulesPlugin implements Plugin<Project> {
 
         // load the "dependencies.gradle" file
         if (p.file("dependencies.gradle").exists()) {
-            println "Adding custom dependencies from 'dependencies.gradle'."
+            p.logger.lifecycle("Adding custom dependencies from 'dependencies.gradle'.")
             p.apply([from: 'dependencies.gradle'])
         } else {
-            println "No custom dependencies loaded. Add file 'dependencies.gradle' with to dependencies to add some."
+            p.logger.lifecycle("No custom dependencies loaded. Add file 'dependencies.gradle' with to dependencies to add some.")
         }
 
         if (p.ext.has('coreproject')) {
             def coreproject = p.ext.coreproject
-            println "The Modules are compiled with the core directly."
-            println "Replacing dependencies to the following core artifacts with the core project \"${coreproject}\":"
-            println " - org.opencms:opencms-core"
-            println " - org.opencms:opencms-gwt"
-            println " - org.opencms:opencms-modules"
-            println " - org.opencms:opencms-test"
-            println " - org.opencms:opencms-setup"
+            p.logger.lifecycle("The Modules are compiled with the core directly.")
+            p.logger.lifecycle("Replacing dependencies to the following core artifacts with the core project \"${coreproject}\":")
+            p.logger.lifecycle(" - org.opencms:opencms-core")
+            p.logger.lifecycle(" - org.opencms:opencms-gwt")
+            p.logger.lifecycle(" - org.opencms:opencms-modules")
+            p.logger.lifecycle(" - org.opencms:opencms-test")
+            p.logger.lifecycle(" - org.opencms:opencms-setup")
             p.configurations.all {
                 resolutionStrategy.dependencySubstitution {
                     substitute module("org.opencms:opencms-core") using project(coreproject)
@@ -205,25 +206,25 @@ class OpenCmsModulesPlugin implements Plugin<Project> {
             group = 'OpenCms'
             description = 'Dsiplays a detailed description of all plugin functions.'
             doFirst{
-                println HORIZONTAL_LINE
-                println 'OpenCms modules plugin description'
-                println ''
-                println 'Use this plugin to build modules for OpenCms.'
-                println ''
-                println 'Required build properties:'
-                println '    build_version: the artifact version'
-                println '    project_name: the project name used to name artifacts'
-                println '    project_nice_name: the nice name of the project used in artifact description'
-                println '    modules_list: the comma separated list of module names'
-                println ''
-                println 'Optional build properties:'
-                println "    build_directory: the build directory (default: ${DEFAULT_BUILD_DIR})"
-                println "    java_target_version: the java source and compatibility version (default: ${DEFAULT_JAVA_COMPATIBILITY})"
-                println "    max_heap_size: the heap size to use during GWT build (default: ${DEFAULT_MAX_HEAPSIZE})"
-                println '    gwt_style: the GWT output style, use pretty for debug build (default: obfuscated)'
-                println '    gwt_mode: the GWT compile mode, use draftCompile to speed up build times (default: strict)'
-                println '    copy_module_test: the folder to copy modules for test case import to (default: test/data/WEB-INF/packages)'
-                println HORIZONTAL_LINE
+                logger.lifecycle(HORIZONTAL_LINE)
+                logger.lifecycle('OpenCms modules plugin description')
+                logger.lifecycle('')
+                logger.lifecycle('Use this plugin to build modules for OpenCms.')
+                logger.lifecycle('')
+                logger.lifecycle('Required build properties:')
+                logger.lifecycle('    build_version: the artifact version')
+                logger.lifecycle('    project_name: the project name used to name artifacts')
+                logger.lifecycle('    project_nice_name: the nice name of the project used in artifact description')
+                logger.lifecycle('    modules_list: the comma separated list of module names')
+                logger.lifecycle('')
+                logger.lifecycle('Optional build properties:')
+                logger.lifecycle("    build_directory: the build directory (default: ${DEFAULT_BUILD_DIR})")
+                logger.lifecycle("    java_target_version: the java source and compatibility version (default: ${DEFAULT_JAVA_COMPATIBILITY})")
+                logger.lifecycle("    max_heap_size: the heap size to use during GWT build (default: ${DEFAULT_MAX_HEAPSIZE})")
+                logger.lifecycle('    gwt_style: the GWT output style, use pretty for debug build (default: obfuscated)')
+                logger.lifecycle('    gwt_mode: the GWT compile mode, use draftCompile to speed up build times (default: strict)')
+                logger.lifecycle('    copy_module_test: the folder to copy modules for test case import to (default: test/data/WEB-INF/packages)')
+                logger.lifecycle(HORIZONTAL_LINE)
             }
         }
 
@@ -381,9 +382,9 @@ class OpenCmsModulesPlugin implements Plugin<Project> {
                         exclude '**/.gitignore'
                         exclude '**/test/**'
                         doFirst {
-                            println HORIZONTAL_LINE
-                            println "Building JAR for $moduleName version $moduleVersion"
-                            println HORIZONTAL_LINE
+                            logger.lifecycle(HORIZONTAL_LINE)
+                            logger.lifecycle("Building JAR for $moduleName version $moduleVersion")
+                            logger.lifecycle(HORIZONTAL_LINE)
                         }
                     }
                 }
@@ -436,7 +437,7 @@ class OpenCmsModulesPlugin implements Plugin<Project> {
                                 from installSource
                                 into copyModuleTest
                                 doFirst {
-                                    println installMessage
+                                    logger.lifecycle(installMessage)
                                 }
                                 ext.moduleName="${moduleName}"
                             }
@@ -448,7 +449,7 @@ class OpenCmsModulesPlugin implements Plugin<Project> {
                                 into copyModuleTest
                                 rename("${moduleName}-${moduleVersion}.zip","${moduleName}.zip")
                                 doFirst {
-                                    println installMessage
+                                    logger.lifecycle(installMessage)
                                 }
                                 ext.moduleName="${moduleName}"
                             }
@@ -465,7 +466,7 @@ class OpenCmsModulesPlugin implements Plugin<Project> {
                             }
                         }
                     } else {
-                        println "WARN: Installing module $moduleName for testcases will not work. The property 'copy_module_test' is not set correctly."
+                        p.logger.warn("Installing module $moduleName for testcases will not work. The property 'copy_module_test' is not set correctly.")
                     }
                 }
 
@@ -491,9 +492,9 @@ class OpenCmsModulesPlugin implements Plugin<Project> {
                         archiveVersion = moduleVersion
                     }
                     doLast {
-                        println HORIZONTAL_LINE
-                        println "Building ZIP for $moduleName version $moduleVersion"
-                        println HORIZONTAL_LINE
+                        logger.lifecycle(HORIZONTAL_LINE)
+                        logger.lifecycle("Building ZIP for $moduleName version $moduleVersion")
+                        logger.lifecycle(HORIZONTAL_LINE)
                     }
                     // excluding jars from modules, jars will be placed in the WEB-INF lib folder through the deployment process
                     from("${moduleFolder}/resources"){
@@ -540,9 +541,9 @@ class OpenCmsModulesPlugin implements Plugin<Project> {
                         outputs.upToDateSpec = new org.gradle.api.specs.AndSpec()
 
                         doFirst {
-                            println HORIZONTAL_LINE
-                            println "Building GWT resources for $gwtModule"
-                            println HORIZONTAL_LINE
+                            logger.lifecycle(HORIZONTAL_LINE)
+                            logger.lifecycle("Building GWT resources for $gwtModule")
+                            logger.lifecycle(HORIZONTAL_LINE)
                             // to clean the output directory, delete it first
                             def dir = gwtBuildDir
                             if (dir.exists()){
@@ -620,7 +621,7 @@ class OpenCmsModulesPlugin implements Plugin<Project> {
                 }
                 dependsOn 'copyDeps'
                 doFirst {
-                    println 'Done'
+                    logger.lifecycle('Done')
                 }
             }
 
@@ -649,9 +650,9 @@ class OpenCmsModulesPlugin implements Plugin<Project> {
                 exclude '**/.gitignore'
                 exclude '**/test/**'
                 doFirst {
-                    println HORIZONTAL_LINE
-                    println "Building JAR for ${projectNiceName} ALL"
-                    println HORIZONTAL_LINE
+                    logger.lifecycle(HORIZONTAL_LINE)
+                    logger.lifecycle("Building JAR for ${projectNiceName} ALL")
+                    logger.lifecycle(HORIZONTAL_LINE)
                 }
                 duplicatesStrategy = 'exclude'
             }
@@ -693,7 +694,7 @@ class OpenCmsModulesPlugin implements Plugin<Project> {
                 dependsOn 'publishToMavenLocal'
                 def buildVersion = p.build_version
                 doFirst {
-                    println("Installing artifacts for version ${buildVersion}")
+                    logger.lifecycle("Installing artifacts for version ${buildVersion}")
                 }
             }
 
@@ -735,14 +736,17 @@ class OpenCmsModulesPlugin implements Plugin<Project> {
             p.tasks.withType(JavaCompile) {
                 options.sourcepath=p.files()
                 options.encoding='UTF-8'
+                if (p.gradle.startParameter.logLevel == LogLevel.QUIET) {
+                    options.compilerArgs += ['-Xlint:none', '-nowarn']
+                    logging.captureStandardOutput LogLevel.INFO
+                    logging.captureStandardError LogLevel.INFO
+                }
             }
 
             p.tasks.withType(Javadoc) {
                 options.addStringOption("sourcepath", "")
-                if (JavaVersion.current().isJava8Compatible()) {
-                    options.addStringOption("Xdoclint:none", "-quiet")
-                    options.addBooleanOption("-allow-script-in-comments",true);
-                }
+                options.addStringOption("Xdoclint:none", "-quiet")
+                options.addBooleanOption("-allow-script-in-comments", true)
             }
 
             p.tasks.named('assemble') {
@@ -814,6 +818,16 @@ class OpenCmsModulesPlugin implements Plugin<Project> {
                                 }
                             }
                         }
+                    }
+                }
+            }
+
+            p.gradle.taskGraph.whenReady { taskGraph ->
+                def javadocTask = p.tasks.findByName('projectAllJavadocJar')
+                if (javadocTask == null || !taskGraph.hasTask(javadocTask)) {
+                    def pub = p.publishing.publications.findByName('modules')
+                    if (pub != null) {
+                        pub.artifacts.removeIf { it.classifier == 'javadoc' }
                     }
                 }
             }

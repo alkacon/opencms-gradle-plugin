@@ -46,12 +46,12 @@ public class OpenCmsModulesDefaultDependencyPlugin implements Plugin<Project> {
     void apply(Project project) {
 
         def extension = project.getExtensions().create('ocDependencies', OpenCmsModulesExtension)
-        println "Initialized ocDependencies."
+        project.logger.lifecycle("Initialized ocDependencies.")
         project.tasks.register('ocDependenciesDemo') {
             group = "OpenCms"
             description = "Displays a ocDependencies { } configuration example."
             doLast {
-                extension.printState()
+                extension.printState(logger)
             }
         }
         project.plugins.withId('java') {

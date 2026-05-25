@@ -26,31 +26,34 @@ repositories {
 }
 
 java {
-    sourceCompatibility = JavaVersion.VERSION_1_8
-    targetCompatibility = JavaVersion.VERSION_1_8
+    sourceCompatibility = JavaVersion.VERSION_21
+    targetCompatibility = JavaVersion.VERSION_21
 }
 
-task javadocJar(type: Jar, dependsOn: groovydoc) {
+tasks.register('javadocJar', Jar) {
+    dependsOn groovydoc
     archiveClassifier = 'javadoc'
     from layout.buildDirectory.dir("docs/groovydoc")
 }
 
-task sourcesJar(type: Jar) {
+tasks.register('sourcesJar', Jar) {
     from sourceSets.main.groovy.srcDirs
     archiveClassifier = 'sources'
 }
 
-task setGradleVersion(type: Wrapper) {
+tasks.register('setGradleVersion', Wrapper) {
     gradleVersion = '9.4.1'
 }
 
-task install(dependsOn: publishToMavenLocal) {
+tasks.register('install') {
+    dependsOn publishToMavenLocal
     doFirst {
         println "Installing artifacts for version $version"
     }
 }
 
-task uploadArchives(dependsOn: publish) {
+tasks.register('uploadArchives') {
+    dependsOn publish
     doFirst {
         println "Upload artifacts for version $version"
     }

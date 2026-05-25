@@ -36,6 +36,7 @@ import org.gradle.api.model.ObjectFactory
 import org.gradle.api.provider.Property
 import org.gradle.api.provider.ProviderFactory
 import javax.inject.Inject
+import org.gradle.api.logging.Logger
 
 /**
  * Provides a DSL for configuration of OpenCms default dependencies.
@@ -133,15 +134,15 @@ public class OpenCmsModulesExtension {
          * Prints the actual configuration.
          * @param linePrefix
          */
-        public void printState(String linePrefix) {
+        public void printState(String linePrefix, Logger logger) {
 
-            println (linePrefix + "opencmsCore=" + opencmsCore.get())
-            println (linePrefix + "opencmsGwt=" + opencmsGwt.get())
-            println (linePrefix + "opencmsModules=" + opencmsModules.get())
-            println (linePrefix + "opencmsSetup=" + opencmsSetup.get())
-            println (linePrefix + "opencmsTest=" + opencmsTest.get())
-            println (linePrefix + "hsqldb=" + hsqldb.get())
-            println (linePrefix + "junit=" + junit.get())
+            logger.lifecycle(linePrefix + "opencmsCore=" + opencmsCore.get())
+            logger.lifecycle(linePrefix + "opencmsGwt=" + opencmsGwt.get())
+            logger.lifecycle(linePrefix + "opencmsModules=" + opencmsModules.get())
+            logger.lifecycle(linePrefix + "opencmsSetup=" + opencmsSetup.get())
+            logger.lifecycle(linePrefix + "opencmsTest=" + opencmsTest.get())
+            logger.lifecycle(linePrefix + "hsqldb=" + hsqldb.get())
+            logger.lifecycle(linePrefix + "junit=" + junit.get())
         }
     }
 
@@ -191,20 +192,20 @@ public class OpenCmsModulesExtension {
     /**
      * Prints the actual dependency configuration.
      */
-    public void printState() {
-        println ""
-        println "OpenCms default dependencies are configured as follows"
-        println "======================================================"
-        println "ocDefaultDependencies {"
-        println "  compile {"
-        compile.printState("    ")
-        println "  }"
-        println "  testCompile {"
-        testCompile.printState("    ")
-        println "  }"
-        println "  inModuleDeps=${inModuleDeps.get()}"
-        println "  ignoreTestDeps=${ignoreTestDeps.get()}"
-        println "}"
-        println ""
+    public void printState(Logger logger) {
+        logger.lifecycle("")
+        logger.lifecycle("OpenCms default dependencies are configured as follows")
+        logger.lifecycle("======================================================")
+        logger.lifecycle("ocDefaultDependencies {")
+        logger.lifecycle("  compile {")
+        compile.printState("    ", logger)
+        logger.lifecycle("  }")
+        logger.lifecycle("  testCompile {")
+        testCompile.printState("    ", logger)
+        logger.lifecycle("  }")
+        logger.lifecycle("  inModuleDeps=${inModuleDeps.get()}")
+        logger.lifecycle("  ignoreTestDeps=${ignoreTestDeps.get()}")
+        logger.lifecycle("}")
+        logger.lifecycle("")
     }
 }
